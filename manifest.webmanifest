@@ -1,0 +1,17 @@
+{
+  "name": "RedditMD — Markdown writer for Reddit",
+  "short_name": "RedditMD",
+  "description": "Write and preview Reddit-flavored Markdown offline, then copy it for the Reddit app.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f2f3f7",
+  "theme_color": "#1a1a2e",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
