@@ -18,9 +18,9 @@
     const showPreview = which === 'preview';
     document.body.classList.toggle('show-preview', showPreview);
     $('#tab-edit').classList.toggle('active', !showPreview);
-    $('#tab-edit').setAttribute('aria-pressed', String(!showPreview));
+    $('#tab-edit').setAttribute('aria-selected', String(!showPreview));
     $('#tab-preview').classList.toggle('active', showPreview);
-    $('#tab-preview').setAttribute('aria-pressed', String(showPreview));
+    $('#tab-preview').setAttribute('aria-selected', String(showPreview));
     if (showPreview) updatePreview();
     localStorage.setItem('redditmd.pane', which);
   }
