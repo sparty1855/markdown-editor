@@ -2,23 +2,24 @@
  * tablebuilder.js — full-screen rich table editor.
  *
  * Grid model: grid[0] is the header row; grid[r>0] are body rows.
- * Tap a cell to select it: a contextual action bar under the top bar shows
- * that cell's actions (edit / copy / paste / clear). Cells in row 0 also
- * get their column's tools; cells in column 0 also get their row's tools.
+ * Tap a cell to select it. A contextual action bar under the top bar shows
+ * the cell's actions; row tools and column tools get their own rows, and an
+ * always-present row offers "+ Row / + Col" with after-selection insertion
+ * and a quick-add dropdown (add 2, 3, or a custom number).
  *
- * Editing happens in a modal: large textarea at the bottom, live markdown
- * preview above it, and a limited inline toolbar (no lists/headings/rules/
- * tables — those don't belong inside a table cell).
+ * Editing happens in a modal: live markdown preview above a large textarea,
+ * with a limited inline toolbar (no lists/headings/rules/tables in cells).
  */
 const TableBuilder = (() => {
   'use strict';
 
   let screen = null;
-  let bar = null;       // contextual action bar
-  let modal = null;     // cell edit modal
+  let bar = null;
+  let modal = null;      // cell edit modal
+  let numModal = null;   // "add custom number" modal
   let grid = [];
   let align = [];
-  let sel = null;       // {r, c} — grid coordinates, r=0 is the header row
+  let sel = null;        // {r, c} — r=0 is the header row
   let onDoneCb = null;
 
   const rowsCount = () => grid.length;
@@ -83,9 +84,8 @@ const TableBuilder = (() => {
   function buildScreen() {
     screen = document.createElement('div');
     screen.id = 'screen-builder';
-    // z-index 1045: above the app UI (FAB ~1030), but BELOW Bootstrap's modal
-    // layer (backdrop 1050 / modal 1055) so the cell editor modal stacks on
-    // top of the builder where it belongs.
+    // z-index 1045: above app chrome (FAB ~1030), BELOW Bootstrap's modal
+    // layer (backdrop 1050 / modal 1055) so cell/number modals stack on top.
     screen.style.cssText =
       'position:fixed;inset:0;z-index:1045;background:#fff;display:flex;flex-direction:column;' +
       'padding-top:env(safe-area-inset-top,0);';
@@ -97,33 +97,29 @@ const TableBuilder = (() => {
           <button class="btn btn-success btn-sm ms-auto" id="rmd-builder-done" type="button">✓ Insert</button>
         </div>
       </nav>
-      <div id="rmd-builder-bar" class="d-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary border-bottom flex-shrink-0 overflow-auto" style="scrollbar-width:none;"></div>
-      <div id="rmd-builder-scroll" class="flex-grow-1 overflow-auto p-2"></div>
-      <footer class="d-flex flex-wrap gap-2 p-2 border-top bg-white flex-shrink-0">
-        <button class="btn btn-outline-primary btn-sm" id="rmd-add-row" type="button">+ Add row</button>
-        <button class="btn btn-outline-primary btn-sm" id="rmd-add-col" type="button">+ Add column</button>
-        <span class="ms-auto align-self-center small text-body-secondary">First row &amp; column are headers — select their cells for row/column tools</span>
-      </footer>`;
+      <div id="rmd-builder-bar" class="d-flex flex-column px-2 py-1 bg-body-tertiary border-bottom flex-shrink-0"></div>
+      <div id="rmd-builder-scroll" class="flex-grow-1 overflow-auto p-2"></div>`;
     document.body.appendChild(screen);
     bar = screen.querySelector('#rmd-builder-bar');
 
     screen.querySelector('#rmd-builder-cancel').addEventListener('click', close);
     screen.querySelector('#rmd-builder-done').addEventListener('click', commit);
-    screen.querySelector('#rmd-add-row').addEventListener('click', () => {
-      grid.push(Array(colsCount()).fill(''));
-      render();
-    });
-    screen.querySelector('#rmd-add-col').addEventListener('click', () => {
-      const n = colsCount();
-      grid.forEach((r) => r.push(''));
-      grid[0][n] = 'Column ' + (n + 1);
-      align.push(null);
-      render();
-      toastB('Added column ' + (n + 1));
-    });
   }
 
-  // ------------------------------------------------------------- action bar
+  // ------------------------------------------------------------- bar rows
+  function barRow() {
+    const row = document.createElement('div');
+    row.className = 'd-flex flex-wrap align-items-center gap-1 py-1';
+    return row;
+  }
+
+  function rowLabel(text) {
+    const span = document.createElement('span');
+    span.className = 'small text-body-secondary me-1 flex-shrink-0';
+    span.textContent = text + ':';
+    return span;
+  }
+
   function btn(label, title, fn, variant, disabled) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -140,7 +136,7 @@ const TableBuilder = (() => {
       b.classList.add('opacity-50');
       return b;
     }
-    const b = btn(label, title, (e) => {
+    const b = btn(label, title, () => {
       if (b.dataset.armed === '1') { fn(); return; }
       b.dataset.armed = '1';
       b.classList.remove('btn-outline-dark');
@@ -159,74 +155,220 @@ const TableBuilder = (() => {
   function updateBar() {
     if (!bar) return;
     bar.innerHTML = '';
+
     if (!sel) {
-      bar.innerHTML = '<span class="small text-body-secondary flex-shrink-0">Tap a cell to select it — its actions appear here</span>';
-      return;
-    }
-    const { r, c } = sel;
-    const n = colsCount();
+      const hint = barRow();
+      hint.append(rowLabel('Tap a cell — its actions appear here'));
+      bar.append(hint);
+    } else {
+      const { r, c } = sel;
+      const n = colsCount();
 
-    const label = document.createElement('span');
-    label.className = 'small text-body-secondary flex-shrink-0 me-1';
-    label.textContent = 'R' + (r + 1) + '·C' + (c + 1) + ' ';
-    bar.append(label);
-
-    // Base cell actions.
-    bar.append(
-      btn('✏ Edit', 'Edit cell in full editor', openCellModal, 'primary'),
-      btn('⧉', 'Copy cell', () => clipWrite(String(grid[r][c] ?? ''))),
-      btn('📥', 'Paste into cell', async () => {
-        const t = await clipRead();
-        if (t == null) return;
-        grid[r][c] = t.replace(/\n+/g, ' ');
-        render();
-      }),
-      btn('✕', 'Clear cell', () => { grid[r][c] = ''; render(); }, 'danger')
-    );
-
-    // Column tools on first-row cells.
-    if (r === 0) {
-      const sep = document.createElement('span');
-      sep.className = 'border-start mx-1 flex-shrink-0';
-      bar.append(sep);
-      bar.append(
-        btn('⇦', 'Move column left', () => moveCol(c, -1), 'secondary', c === 0),
-        btn('⇨', 'Move column right', () => moveCol(c, 1), 'secondary', c === n - 1),
-        btn('⧉ Col', 'Copy column', () => clipWrite(colLines(c).join('\n'))),
-        btn('📥 Col', 'Paste into column (one line per cell)', async () => {
+      // Row 1: the selected cell itself.
+      const cellRow = barRow();
+      cellRow.append(rowLabel('Cell R' + (r + 1) + '·C' + (c + 1)));
+      cellRow.append(
+        btn('✏ Edit', 'Edit cell in full editor', openCellModal, 'primary'),
+        btn('⧉', 'Copy cell', () => clipWrite(String(grid[r][c] ?? ''))),
+        btn('📥', 'Paste into cell', async () => {
           const t = await clipRead();
           if (t == null) return;
-          const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
-          if (!lines.length) return;
-          setColumn(c, lines);
+          grid[r][c] = t.replace(/\n+/g, ' ');
           render();
-          toastB('Column updated');
         }),
-        deleteGuardBtn('✕ Col', 'Delete column', () => delCol(c), () => n > 1)
+        btn('✕', 'Clear cell', () => { grid[r][c] = ''; render(); }, 'danger')
       );
+      bar.append(cellRow);
+
+      // Row 2: column tools (first-row cells).
+      if (r === 0) {
+        const colRow = barRow();
+        colRow.append(rowLabel('Column C' + (c + 1)));
+        colRow.append(
+          btn('⇦', 'Move column left', () => moveCol(c, -1), 'secondary', c === 0),
+          btn('⇨', 'Move column right', () => moveCol(c, 1), 'secondary', c === n - 1),
+          btn('⧉ Col', 'Copy column', () => clipWrite(colLines(c).join('\n'))),
+          btn('📥 Col', 'Paste into column (one line per cell)', async () => {
+            const t = await clipRead();
+            if (t == null) return;
+            const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
+            if (!lines.length) return;
+            for (let rr = 0; rr < rowsCount(); rr++) grid[rr][c] = lines[rr] ?? '';
+            render();
+            toastB('Column updated');
+          }),
+          deleteGuardBtn('✕ Col', 'Delete column', () => delCol(c), () => n > 1)
+        );
+        bar.append(colRow);
+      }
+
+      // Row 3: row tools (first-column cells).
+      if (c === 0) {
+        const rowTools = barRow();
+        rowTools.append(rowLabel('Row R' + (r + 1)));
+        rowTools.append(
+          btn('⇧', 'Move row up', () => moveRow(r, -1), 'secondary', r === 0),
+          btn('⇩', 'Move row down', () => moveRow(r, 1), 'secondary', r === rowsCount() - 1),
+          btn('⧉ Row', 'Copy row (tab-separated)', () => {
+            clipWrite(padRow(grid[r], colsCount()).join('\t'));
+          }),
+          btn('📥 Row', 'Paste into row (tab-separated)', async () => {
+            const t = await clipRead();
+            if (t == null) return;
+            const cells = t.split('\t').map((x) => x.trim());
+            for (let cc = 0; cc < colsCount(); cc++) grid[r][cc] = cells[cc] ?? grid[r][cc];
+            render();
+            toastB('Row updated');
+          }),
+          deleteGuardBtn('✕ Row', 'Delete row', () => delRow(r), () => r > 0 && rowsCount() > 2)
+        );
+        bar.append(rowTools);
+      }
     }
 
-    // Row tools on first-column cells.
-    if (c === 0) {
-      const sep = document.createElement('span');
-      sep.className = 'border-start mx-1 flex-shrink-0';
-      bar.append(sep);
-      bar.append(
-        btn('⇧', 'Move row up', () => moveRow(r, -1), 'secondary', r === 0),
-        btn('⇩', 'Move row down', () => moveRow(r, 1), 'secondary', r === rowsCount() - 1),
-        btn('⧉ Row', 'Copy row (tab-separated)', () => {
-          clipWrite(padRow(grid[r], colsCount()).join('\t'));
-        }),
-        btn('📥 Row', 'Paste into row (tab-separated)', async () => {
-          const t = await clipRead();
-          if (t == null) return;
-          setRow(r, t.split('\t').map((x) => x.trim()));
-          render();
-          toastB('Row updated');
-        }),
-        deleteGuardBtn('✕ Row', 'Delete row', () => delRow(r), () => r > 0 && rowsCount() > 2)
-      );
+    // Always present: add rows / columns (insert after selection, or at the end).
+    bar.append(addControlsRow());
+
+    // Stacked rows get a subtle divider between them.
+    const rows = [...bar.children];
+    rows.forEach((rowEl, i) => {
+      if (i < rows.length - 1) rowEl.style.borderBottom = '1px solid var(--bs-border-color-translucent)';
+    });
+  }
+
+  function addControlsRow() {
+    const row = barRow();
+    row.append(rowLabel('Add'));
+    row.append(makeAddControl('row', '+ Row'));
+    row.append(makeAddControl('col', '+ Col'));
+    return row;
+  }
+
+  function makeAddControl(kind, label) {
+    const wrap = document.createElement('div');
+    wrap.className = 'btn-group btn-group-sm';
+
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'btn btn-primary';
+    main.textContent = label;
+    main.title = 'Add 1 ' + kind + (kind === 'row' ? ' after the selected row (or at the bottom)' : ' after the selected column (or at the end)');
+    main.addEventListener('click', () => addOne(kind));
+
+    const caret = document.createElement('button');
+    caret.type = 'button';
+    caret.className = 'btn btn-primary dropdown-toggle dropdown-toggle-split';
+    caret.setAttribute('data-bs-toggle', 'dropdown');
+    caret.setAttribute('aria-label', 'More add options');
+    caret.innerHTML = '<span class="visually-hidden">options</span>';
+
+    const menu = document.createElement('ul');
+    menu.className = 'dropdown-menu';
+    [2, 3].forEach((n) => {
+      const li = document.createElement('li');
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'dropdown-item';
+      item.textContent = 'Add ' + n + (kind === 'row' ? ' rows' : ' columns');
+      item.addEventListener('click', () => addMany(kind, n));
+      li.append(item);
+      menu.append(li);
+    });
+    const hr = document.createElement('li');
+    hr.innerHTML = '<hr class="dropdown-divider">';
+    menu.append(hr);
+    const customLi = document.createElement('li');
+    const customBtn = document.createElement('button');
+    customBtn.type = 'button';
+    customBtn.className = 'dropdown-item';
+    customBtn.textContent = 'Custom…';
+    customBtn.addEventListener('click', async () => {
+      const n = await askNumber('How many ' + (kind === 'row' ? 'rows' : 'columns') + '?');
+      if (n) addMany(kind, n);
+    });
+    customLi.append(customBtn);
+    menu.append(customLi);
+
+    wrap.append(main, caret, menu);
+    return wrap;
+  }
+
+  // Insert `count` rows after the selected row (or at the bottom).
+  function insertRows(count) {
+    const at = sel ? sel.r : rowsCount() - 1;
+    const empty = () => Array(colsCount()).fill('');
+    const block = [];
+    for (let i = 0; i < count; i++) block.push(empty());
+    grid.splice(at + 1, 0, ...block);
+    render();
+  }
+
+  // Insert `count` columns after the selected column (or at the end).
+  function insertCols(count) {
+    const at = sel ? sel.c : colsCount() - 1;
+    for (let i = 0; i < count; i++) {
+      const pos = at + 1 + i;
+      grid.forEach((r) => r.splice(pos, 0, ''));
+      grid[0][pos] = 'Column ' + (pos + 1);
+      align.splice(pos, 0, null);
     }
+    render();
+  }
+
+  function addOne(kind) {
+    if (kind === 'row') insertRows(1); else insertCols(1);
+  }
+
+  function addMany(kind, n) {
+    if (kind === 'row') insertRows(n); else insertCols(n);
+    toastB('Added ' + n + (kind === 'row' ? (n === 1 ? ' row' : ' rows') : (n === 1 ? ' column' : ' columns')));
+  }
+
+  // ------------------------------------------------------------- number modal
+  function askNumber(title) {
+    return new Promise((resolve) => {
+      if (!numModal) {
+        numModal = document.createElement('div');
+        numModal.className = 'modal fade';
+        numModal.innerHTML = `
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header py-2"><h6 class="modal-title" id="rmd-num-title"></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+              <div class="modal-body">
+                <label class="form-label" for="rmd-num-input">Number of positions</label>
+                <input type="number" class="form-control" id="rmd-num-input" min="1" max="100" inputmode="numeric" value="4">
+              </div>
+              <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="rmd-num-ok">Add</button>
+              </div>
+            </div>
+          </div>`;
+        document.body.appendChild(numModal);
+        const ok = numModal.querySelector('#rmd-num-ok');
+        const input = numModal.querySelector('#rmd-num-input');
+        const submit = () => {
+          const v = Math.min(100, Math.max(1, parseInt(input.value, 10) || 1));
+          numModal._resolve(v);
+          bootstrap.Modal.getInstance(numModal).hide();
+        };
+        ok.addEventListener('click', submit);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+        numModal.addEventListener('hidden.bs.modal', () => {
+          const res = numModal._resolve;
+          numModal._resolve = null;
+          if (res) res(null);
+        });
+      }
+      numModal.querySelector('#rmd-num-title').textContent = title;
+      const input = numModal.querySelector('#rmd-num-input');
+      input.value = 4;
+      numModal._resolve = resolve;
+      const inst = bootstrap.Modal.getOrCreateInstance(numModal);
+      numModal.addEventListener('shown.bs.modal', () => input.select(), { once: true });
+      inst.show();
+    });
   }
 
   // ------------------------------------------------------------- cell modal
@@ -278,7 +420,6 @@ const TableBuilder = (() => {
 
     modal.querySelectorAll('[data-cmd]').forEach((b) => {
       b.addEventListener('click', () => {
-        const cmd = b.dataset.cmd;
         const wraps = {
           bold: ['**', '**', 'bold text'],
           italic: ['*', '*', 'italic text'],
@@ -287,7 +428,7 @@ const TableBuilder = (() => {
           code: ['`', '`', 'code'],
           link: ['[', '](https://example.com)', 'label'],
           sup: ['^(', ')', 'superscript']
-        }[cmd];
+        }[b.dataset.cmd];
         const [before, after, ph] = wraps;
         const start = input.selectionStart, end = input.selectionEnd;
         const chosen = input.value.slice(start, end) || ph;
@@ -323,14 +464,6 @@ const TableBuilder = (() => {
     const out = [];
     for (let r = 0; r < rowsCount(); r++) out.push(String(padRow(grid[r], colsCount())[c] ?? ''));
     return out;
-  }
-
-  function setColumn(c, lines) {
-    for (let r = 0; r < rowsCount(); r++) grid[r][c] = lines[r] ?? '';
-  }
-
-  function setRow(r, cells) {
-    for (let c = 0; c < colsCount(); c++) grid[r][c] = cells[c] ?? grid[r][c];
   }
 
   function moveCol(c, dir) {
@@ -422,6 +555,7 @@ const TableBuilder = (() => {
   }
 
   function close() {
+    if (numModal) { bootstrap.Modal.getInstance(numModal)?.hide(); numModal.remove(); numModal = null; }
     if (modal) { bootstrap.Modal.getInstance(modal)?.hide(); modal.remove(); modal = null; }
     if (screen) { screen.remove(); screen = null; }
     if (toastEl) { toastEl.remove(); toastEl = null; }
