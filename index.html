@@ -9,6 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
 <link rel="stylesheet" href="vendor/css/bootstrap.min.css">
 <style>
   /* Minimal glue — everything else is stock Bootstrap. */
@@ -51,12 +52,12 @@
   <div id="screen-home">
     <nav class="navbar bg-dark navbar-dark py-2">
       <div class="container">
-        <span class="navbar-brand mb-0"><span class="text-warning">⬢</span> Markdown Editor</span>
-        <button class="btn btn-outline-light btn-sm ms-auto" id="btn-settings" type="button" title="Settings">⚙</button>
+        <span class="navbar-brand mb-0"><i class="fa-solid fa-square-pen"></i> Markdown Editor</span>
+        <button class="btn btn-outline-light btn-sm ms-auto" id="btn-settings" type="button" title="Settings"><i class="fa-solid fa-gear"></i></button>
       </div>
     </nav>
     <div class="container py-3" style="max-width: 46rem;">
-      <button class="btn btn-primary btn-lg w-100 mb-3" id="btn-new-doc" type="button">✎ New note</button>
+      <button class="btn btn-primary btn-lg w-100 mb-3" id="btn-new-doc" type="button"><i class="fa-solid fa-file-circle-plus"></i> New note</button>
       <ul class="nav nav-tabs" id="home-tabs" role="tablist">
         <li class="nav-item flex-fill" role="presentation">
           <button class="nav-link w-100 active" id="tab-notes" type="button" role="tab" aria-selected="true">Notes</button>
@@ -71,7 +72,7 @@
         <div id="doc-list" class="list-group"></div>
       </div>
       <div id="home-panel-templates" class="pt-3 d-none">
-        <button class="btn btn-outline-primary w-100 mb-3" id="btn-new-template" type="button">+ New template</button>
+        <button class="btn btn-outline-primary w-100 mb-3" id="btn-new-template" type="button"><i class="fa-solid fa-plus"></i> New template</button>
         <div id="template-list" class="list-group"></div>
       </div>
     </div>
@@ -83,16 +84,16 @@
     <!-- Top bar: back, pane toggle (phones), copy, kebab -->
     <nav class="navbar bg-dark navbar-dark py-1 flex-shrink-0">
       <div class="container-fluid gap-2 px-2">
-        <button class="btn btn-outline-light btn-sm" id="btn-back" type="button" title="Back to notes">←</button>
+        <button class="btn btn-outline-light btn-sm" id="btn-back" type="button" title="Back to notes"><i class="fa-solid fa-arrow-left"></i></button>
         <div class="btn-group btn-group-sm flex-grow-1 mx-2 d-lg-none" role="group" aria-label="Switch panes">
-          <button class="btn btn-outline-light flex-fill" id="tab-edit" type="button" aria-pressed="true">✎ Edit</button>
-          <button class="btn btn-outline-light flex-fill" id="tab-preview" type="button" aria-pressed="false">👁 Preview</button>
+          <button class="btn btn-outline-light flex-fill" id="tab-edit" type="button" aria-pressed="true"><i class="fa-solid fa-pen"></i> Edit</button>
+          <button class="btn btn-outline-light flex-fill" id="tab-preview" type="button" aria-pressed="false"><i class="fa-solid fa-eye"></i> Preview</button>
         </div>
         <div class="flex-grow-1 d-none d-lg-block"></div>
         <span class="badge text-bg-warning d-none" id="badge-template">Template</span>
-        <button class="btn btn-success btn-sm" id="btn-copy" type="button" title="Copy markdown">Copy</button>
+        <button class="btn btn-success btn-sm" id="btn-copy" type="button" title="Copy markdown"><i class="fa-solid fa-copy"></i><span class="ms-1">Copy</span></button>
         <div class="dropdown">
-          <button class="btn btn-outline-light btn-sm" data-bs-toggle="dropdown" type="button" aria-label="More actions">⋮</button>
+          <button class="btn btn-outline-light btn-sm" data-bs-toggle="dropdown" type="button" aria-label="More actions"><i class="fa-solid fa-ellipsis-vertical"></i></button>
           <ul class="dropdown-menu dropdown-menu-end">
             <li><button class="dropdown-item" id="btn-copy-unicode" type="button">Copy as Unicode text</button></li>
             <li><button class="dropdown-item" id="btn-toggle-template" type="button">Save as template</button></li>
@@ -111,13 +112,13 @@
             <div class="card-header py-1 px-1">
               <div class="btn-toolbar md-toolbar gap-1" role="toolbar" aria-label="Formatting">
                 <div class="btn-group btn-group-sm" role="group" aria-label="Inline formatting">
-                  <button class="btn btn-outline-secondary" type="button" data-md="bold" title="Bold"><b>B</b></button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="italic" title="Italic"><i>I</i></button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="underline" title="Underline"><u>U</u></button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="strike" title="Strikethrough"><s>S</s></button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="bold" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="italic" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="underline" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="strike" title="Strikethrough"><i class="fa-solid fa-strikethrough"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Link">
-                  <button class="btn btn-outline-secondary" type="button" data-md="link" title="Link">🔗</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="link" title="Link"><i class="fa-solid fa-link"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Heading">
                   <button class="btn btn-outline-secondary" type="button" id="hdr-btn" title="Apply heading">H1</button>
@@ -130,26 +131,26 @@
                   </ul>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Lists">
-                  <button class="btn btn-outline-secondary" type="button" data-md="ul" title="Bulleted list">•</button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="ol" title="Ordered list">1.</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="ul" title="Bulleted list"><i class="fa-solid fa-list-ul"></i></button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="ol" title="Ordered list"><i class="fa-solid fa-list-ol"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Indentation">
-                  <button class="btn btn-outline-secondary" type="button" data-md="indent" title="Indent (nest list)">⇥</button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="outdent" title="Outdent (un-nest)">⇤</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="indent" title="Indent (nest list)"><i class="fa-solid fa-indent"></i></button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="outdent" title="Outdent (un-nest)"><i class="fa-solid fa-outdent"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Emoji">
-                  <button class="btn btn-outline-secondary" type="button" data-md="emoji" title="Insert emoji">😀</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="emoji" title="Insert emoji picker"><i class="fa-solid fa-face-smile"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Paste">
-                  <button class="btn btn-outline-secondary" type="button" data-md="paste" title="Paste from clipboard">📋</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="paste" title="Paste from clipboard"><i class="fa-solid fa-paste"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="More formatting">
-                  <button class="btn btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-label="More formatting">⋯</button>
+                  <button class="btn btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-label="More formatting"><i class="fa-solid fa-ellipsis"></i></button>
                   <ul class="dropdown-menu">
-                    <li><button class="dropdown-item" type="button" data-md="code">&lt;/&gt; Inline code</button></li>
-                    <li><button class="dropdown-item" type="button" data-md="sup">x² Superscript</button></li>
+                    <li><button class="dropdown-item" type="button" data-md="code"><i class="fa-solid fa-code"></i> Inline code</button></li>
+                    <li><button class="dropdown-item" type="button" data-md="sup"><i class="fa-solid fa-superscript"></i> Superscript</button></li>
                     <li><hr class="dropdown-divider"></li>
-                    <li><button class="dropdown-item" type="button" id="btn-edit-table">▦ Edit table in builder…</button></li>
+                    <li><button class="dropdown-item" type="button" id="btn-edit-table"><i class="fa-solid fa-table-columns"></i> Edit table in builder…</button></li>
                   </ul>
                 </div>
               </div>
@@ -174,7 +175,7 @@
     </main>
 
     <!-- FAB: insert block elements (hidden in preview mode) -->
-    <button class="btn btn-primary" id="fab-insert" type="button" title="Insert">+</button>
+    <button class="btn btn-primary" id="fab-insert" type="button" title="Insert"><i class="fa-solid fa-plus"></i></button>
   </div>
 
   <!-- Insert sheet (opened by the FAB) -->
@@ -185,10 +186,10 @@
     </div>
     <div class="offcanvas-body pt-2">
       <div class="row g-2 insert-grid">
-        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="table">▦ Table</button></div>
-        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="quote">❝ Quote</button></div>
-        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="spoiler">⛔ Spoiler</button></div>
-        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="rule">— Divider</button></div>
+        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="table"><i class="fa-solid fa-table"></i> Table</button></div>
+        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="quote"><i class="fa-solid fa-quote-left"></i> Quote</button></div>
+        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="spoiler"><i class="fa-solid fa-eye-slash"></i> Spoiler</button></div>
+        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="rule"><i class="fa-solid fa-grip-lines"></i> Divider</button></div>
       </div>
     </div>
   </div>
@@ -213,7 +214,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-outline-primary" id="btn-tbl-build">Build table…</button>
+          <button type="button" class="btn btn-outline-primary" id="btn-tbl-build"><i class="fa-solid fa-table"></i> Build table…</button>
           <button type="button" class="btn btn-primary" id="btn-tbl-ok">Insert</button>
         </div>
       </div>
@@ -249,7 +250,7 @@
     <div class="offcanvas-body pt-2">
       <div id="emoji-grid" class="row g-2"></div>
       <div class="d-grid mt-3">
-        <button class="btn btn-outline-secondary btn-sm" id="btn-emoji-manage" type="button">⚙ Edit favorite emojis</button>
+        <button class="btn btn-outline-secondary btn-sm" id="btn-emoji-manage" type="button"><i class="fa-solid fa-gear"></i> Edit favorite emojis</button>
       </div>
     </div>
   </div>
@@ -291,10 +292,10 @@
           <label class="form-label mb-0"><strong>Data</strong></label>
           <div class="row g-2 mt-1">
             <div class="col-6">
-              <button class="btn btn-outline-secondary w-100" id="btn-export" type="button">⬇ Export JSON</button>
+              <button class="btn btn-outline-secondary w-100" id="btn-export" type="button"><i class="fa-solid fa-download"></i> Export JSON</button>
             </div>
             <div class="col-6">
-              <button class="btn btn-outline-secondary w-100" id="btn-import" type="button">⬆ Import JSON</button>
+              <button class="btn btn-outline-secondary w-100" id="btn-import" type="button"><i class="fa-solid fa-upload"></i> Import JSON</button>
             </div>
           </div>
           <div class="form-text">Export downloads every note and template as JSON; import merges them in (exact duplicates skipped).</div>
@@ -313,9 +314,9 @@
 
   <script src="vendor/js/bootstrap.bundle.min.js"></script>
   <!-- ?v pins cache/CDN version so index.html and app code never mismatch -->
-  <script src="storage.js?v=15"></script>
-  <script src="markdown.js?v=15"></script>
-  <script src="tablebuilder.js?v=15"></script>
-  <script src="app.js?v=15"></script>
+  <script src="storage.js?v=16"></script>
+  <script src="markdown.js?v=16"></script>
+  <script src="tablebuilder.js?v=16"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

@@ -2,13 +2,18 @@
  * tablebuilder.js — full-screen rich table editor.
  *
  * Grid model: grid[0] is the header row; grid[r>0] are body rows.
- * Tap a cell to select it. A contextual action bar under the top bar shows
- * the cell's actions; row tools and column tools get their own rows, and an
- * always-present row offers "+ Row / + Col" with after-selection insertion
- * and a quick-add dropdown (add 2, 3, or a custom number).
+ * Tap a cell to select it; tap anything else to deselect.
+ *
+ * The action bar is a FIXED vertical stack of rows (cell tools, column tools,
+ * row tools, add controls). It never changes shape — inapplicable buttons are
+ * greyed out via the disabled state:
+ *   - cell tools apply to the selected cell
+ *   - column tools enable when a header-row cell is selected
+ *   - row tools enable when a first-column cell is selected
+ *   - add controls are always enabled (insert after selection / at the end)
  *
  * Editing happens in a modal: live markdown preview above a large textarea,
- * with a limited inline toolbar (no lists/headings/rules/tables in cells).
+ * with a limited inline toolbar. Icons use vendored Font Awesome 6 free.
  */
 const TableBuilder = (() => {
   'use strict';
@@ -21,16 +26,12 @@ const TableBuilder = (() => {
   let align = [];
   let sel = null;        // {r, c} — r=0 is the header row
   let onDoneCb = null;
+  let refs = {};         // toolbar button refs by title
 
   const rowsCount = () => grid.length;
   const colsCount = () => (grid[0] ? grid[0].length : 0);
 
   // ------------------------------------------------------------- utilities
-  function esc(str) {
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
   let toastEl = null;
   function toastB(msg) {
     if (!toastEl) {
@@ -85,16 +86,16 @@ const TableBuilder = (() => {
     screen = document.createElement('div');
     screen.id = 'screen-builder';
     // z-index 1045: above app chrome (FAB ~1030), BELOW Bootstrap's modal
-    // layer (backdrop 1050 / modal 1055) so cell/number modals stack on top.
+    // layer (backdrop 1050 / modal 1055) so modals stack on top.
     screen.style.cssText =
       'position:fixed;inset:0;z-index:1045;background:#fff;display:flex;flex-direction:column;' +
       'padding-top:env(safe-area-inset-top,0);';
     screen.innerHTML = `
       <nav class="navbar bg-dark py-1 flex-shrink-0">
         <div class="container-fluid gap-2 px-2">
-          <button class="btn btn-outline-light btn-sm" id="rmd-builder-cancel" type="button">✕ Cancel</button>
+          <button class="btn btn-outline-light btn-sm" id="rmd-builder-cancel" type="button"><i class="fa-solid fa-xmark"></i> Cancel</button>
           <span class="navbar-text">Table builder</span>
-          <button class="btn btn-success btn-sm ms-auto" id="rmd-builder-done" type="button">✓ Insert</button>
+          <button class="btn btn-success btn-sm ms-auto" id="rmd-builder-done" type="button"><i class="fa-solid fa-check"></i> Insert</button>
         </div>
       </nav>
       <div id="rmd-builder-bar" class="d-flex flex-column px-2 py-1 bg-body-tertiary border-bottom flex-shrink-0"></div>
@@ -104,143 +105,133 @@ const TableBuilder = (() => {
 
     screen.querySelector('#rmd-builder-cancel').addEventListener('click', close);
     screen.querySelector('#rmd-builder-done').addEventListener('click', commit);
+
+    // Tap anything that isn't a cell → deselect.
+    screen.querySelector('#rmd-builder-scroll').addEventListener('click', (e) => {
+      if (!e.target.closest('.rmd-cell') && sel) {
+        sel = null;
+        render();
+      }
+    });
+
+    buildBar();
+    updateBar();
   }
 
-  // ------------------------------------------------------------- bar rows
+  // ------------------------------------------------------------- toolbar
   function barRow() {
     const row = document.createElement('div');
     row.className = 'd-flex flex-wrap align-items-center gap-1 py-1';
     return row;
   }
 
-  function rowLabel(text) {
-    const span = document.createElement('span');
-    span.className = 'small text-body-secondary me-1 flex-shrink-0';
-    span.textContent = text + ':';
-    return span;
-  }
-
-  function btn(label, title, fn, variant, disabled) {
+  function makeBtn(icon, title, fn, variant) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'btn btn-sm flex-shrink-0 btn-outline-' + (variant || 'secondary') + (disabled ? ' disabled' : '');
-    b.textContent = label;
+    b.className = 'btn btn-sm flex-shrink-0 btn-outline-' + (variant || 'secondary');
     b.title = title;
-    if (!disabled) b.addEventListener('click', fn);
+    b.innerHTML = '<i class="fa-solid fa-' + icon + '"></i>';
+    refs[title] = b;
+    b.addEventListener('click', fn);
     return b;
   }
 
-  function deleteGuardBtn(label, title, fn, canFn) {
-    if (!canFn || !canFn()) {
-      const b = btn(label, 'Not allowed here', () => toastB('Not allowed here'), 'dark');
-      b.classList.add('opacity-50');
-      return b;
-    }
-    const b = btn(label, title, () => {
-      if (b.dataset.armed === '1') { fn(); return; }
-      b.dataset.armed = '1';
-      b.classList.remove('btn-outline-dark');
-      b.classList.add('btn-dark');
-      b.textContent = 'Sure?';
-      setTimeout(() => {
-        b.dataset.armed = '';
-        b.classList.add('btn-outline-dark');
-        b.classList.remove('btn-dark');
-        b.textContent = label;
-      }, 2500);
-    }, 'dark');
-    return b;
+  function buildBar() {
+    bar.innerHTML = '';
+    refs = {};
+
+    const cellRow = barRow();
+    cellRow.append(
+      makeBtn('pen', 'Edit cell in full editor', () => openCellModal(), 'primary'),
+      makeBtn('copy', 'Copy cell', () => clipWrite(String(grid[sel.r][sel.c] ?? ''))),
+      makeBtn('paste', 'Paste into cell', async () => {
+        const t = await clipRead();
+        if (t == null) return;
+        grid[sel.r][sel.c] = t.replace(/\n+/g, ' ');
+        render();
+      }),
+      makeBtn('eraser', 'Clear cell', () => { grid[sel.r][sel.c] = ''; render(); }, 'danger')
+    );
+    bar.append(cellRow);
+
+    const colRow = barRow();
+    colRow.append(
+      makeBtn('arrow-left', 'Move column left', () => moveCol(sel.c, -1)),
+      makeBtn('arrow-right', 'Move column right', () => moveCol(sel.c, 1)),
+      makeBtn('copy', 'Copy column', () => clipWrite(colLines(sel.c).join('\n'))),
+      makeBtn('paste', 'Paste into column (one line per cell)', async () => {
+        const t = await clipRead();
+        if (t == null) return;
+        const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
+        if (!lines.length) return;
+        for (let rr = 0; rr < rowsCount(); rr++) grid[rr][sel.c] = lines[rr] ?? '';
+        render();
+        toastB('Column updated');
+      }),
+      makeBtn('trash-can', 'Delete column', () => delCol(sel.c), 'danger')
+    );
+    bar.append(colRow);
+
+    const rowTools = barRow();
+    rowTools.append(
+      makeBtn('arrow-up', 'Move row up', () => moveRow(sel.r, -1)),
+      makeBtn('arrow-down', 'Move row down', () => moveRow(sel.r, 1)),
+      makeBtn('copy', 'Copy row (tab-separated)', () => {
+        clipWrite(padRow(grid[sel.r], colsCount()).join('\t'));
+      }),
+      makeBtn('paste', 'Paste into row (tab-separated)', async () => {
+        const t = await clipRead();
+        if (t == null) return;
+        const cells = t.split('\t').map((x) => x.trim());
+        for (let cc = 0; cc < colsCount(); cc++) grid[sel.r][cc] = cells[cc] ?? grid[sel.r][cc];
+        render();
+        toastB('Row updated');
+      }),
+      makeBtn('trash-can', 'Delete row', () => delRow(sel.r), 'danger')
+    );
+    bar.append(rowTools);
+
+    bar.append(addControlsRow());
+
+    // Subtle dividers between the fixed rows.
+    [...bar.children].slice(0, -1).forEach((rowEl) => {
+      rowEl.style.borderBottom = '1px solid var(--bs-border-color-translucent)';
+    });
   }
 
   function updateBar() {
-    if (!bar) return;
-    bar.innerHTML = '';
+    if (!bar || !refs['Copy cell']) return;
+    const colCtx = !!(sel && sel.r === 0);
+    const rowCtx = !!(sel && sel.c === 0);
+    const hasCell = !!sel;
+    const n = colsCount();
 
-    if (!sel) {
-      const hint = barRow();
-      hint.append(rowLabel('Tap a cell — its actions appear here'));
-      bar.append(hint);
-    } else {
-      const { r, c } = sel;
-      const n = colsCount();
+    const set = (title, enabled) => {
+      const b = refs[title];
+      if (b) b.disabled = !enabled;
+    };
 
-      // Row 1: the selected cell itself.
-      const cellRow = barRow();
-      cellRow.append(rowLabel('Cell R' + (r + 1) + '·C' + (c + 1)));
-      cellRow.append(
-        btn('✏ Edit', 'Edit cell in full editor', openCellModal, 'primary'),
-        btn('⧉', 'Copy cell', () => clipWrite(String(grid[r][c] ?? ''))),
-        btn('📥', 'Paste into cell', async () => {
-          const t = await clipRead();
-          if (t == null) return;
-          grid[r][c] = t.replace(/\n+/g, ' ');
-          render();
-        }),
-        btn('✕', 'Clear cell', () => { grid[r][c] = ''; render(); }, 'danger')
-      );
-      bar.append(cellRow);
+    set('Edit cell in full editor', hasCell);
+    set('Copy cell', hasCell);
+    set('Paste into cell', hasCell);
+    set('Clear cell', hasCell);
 
-      // Row 2: column tools (first-row cells).
-      if (r === 0) {
-        const colRow = barRow();
-        colRow.append(rowLabel('Column C' + (c + 1)));
-        colRow.append(
-          btn('⇦', 'Move column left', () => moveCol(c, -1), 'secondary', c === 0),
-          btn('⇨', 'Move column right', () => moveCol(c, 1), 'secondary', c === n - 1),
-          btn('⧉ Col', 'Copy column', () => clipWrite(colLines(c).join('\n'))),
-          btn('📥 Col', 'Paste into column (one line per cell)', async () => {
-            const t = await clipRead();
-            if (t == null) return;
-            const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
-            if (!lines.length) return;
-            for (let rr = 0; rr < rowsCount(); rr++) grid[rr][c] = lines[rr] ?? '';
-            render();
-            toastB('Column updated');
-          }),
-          deleteGuardBtn('✕ Col', 'Delete column', () => delCol(c), () => n > 1)
-        );
-        bar.append(colRow);
-      }
+    set('Move column left', colCtx && sel.c > 0);
+    set('Move column right', colCtx && sel.c < n - 1);
+    set('Copy column', colCtx);
+    set('Paste into column (one line per cell)', colCtx);
+    set('Delete column', colCtx && n > 1);
 
-      // Row 3: row tools (first-column cells).
-      if (c === 0) {
-        const rowTools = barRow();
-        rowTools.append(rowLabel('Row R' + (r + 1)));
-        rowTools.append(
-          btn('⇧', 'Move row up', () => moveRow(r, -1), 'secondary', r === 0),
-          btn('⇩', 'Move row down', () => moveRow(r, 1), 'secondary', r === rowsCount() - 1),
-          btn('⧉ Row', 'Copy row (tab-separated)', () => {
-            clipWrite(padRow(grid[r], colsCount()).join('\t'));
-          }),
-          btn('📥 Row', 'Paste into row (tab-separated)', async () => {
-            const t = await clipRead();
-            if (t == null) return;
-            const cells = t.split('\t').map((x) => x.trim());
-            for (let cc = 0; cc < colsCount(); cc++) grid[r][cc] = cells[cc] ?? grid[r][cc];
-            render();
-            toastB('Row updated');
-          }),
-          deleteGuardBtn('✕ Row', 'Delete row', () => delRow(r), () => r > 0 && rowsCount() > 2)
-        );
-        bar.append(rowTools);
-      }
-    }
-
-    // Always present: add rows / columns (insert after selection, or at the end).
-    bar.append(addControlsRow());
-
-    // Stacked rows get a subtle divider between them.
-    const rows = [...bar.children];
-    rows.forEach((rowEl, i) => {
-      if (i < rows.length - 1) rowEl.style.borderBottom = '1px solid var(--bs-border-color-translucent)';
-    });
+    set('Move row up', rowCtx && sel.r > 0);
+    set('Move row down', rowCtx && sel.r < rowsCount() - 1);
+    set('Copy row (tab-separated)', rowCtx);
+    set('Paste into row (tab-separated)', rowCtx);
+    set('Delete row', rowCtx && sel.r > 0 && rowsCount() > 2);
   }
 
   function addControlsRow() {
     const row = barRow();
-    row.append(rowLabel('Add'));
-    row.append(makeAddControl('row', '+ Row'));
-    row.append(makeAddControl('col', '+ Col'));
+    row.append(makeAddControl('row', ' Row'), makeAddControl('col', ' Col'));
     return row;
   }
 
@@ -251,8 +242,9 @@ const TableBuilder = (() => {
     const main = document.createElement('button');
     main.type = 'button';
     main.className = 'btn btn-primary';
-    main.textContent = label;
-    main.title = 'Add 1 ' + kind + (kind === 'row' ? ' after the selected row (or at the bottom)' : ' after the selected column (or at the end)');
+    main.innerHTML = '<i class="fa-solid fa-plus"></i>' + label;
+    main.title = 'Add 1 ' + kind +
+      (kind === 'row' ? ' after the selected row (or at the bottom)' : ' after the selected column (or at the end)');
     main.addEventListener('click', () => addOne(kind));
 
     const caret = document.createElement('button');
@@ -260,7 +252,6 @@ const TableBuilder = (() => {
     caret.className = 'btn btn-primary dropdown-toggle dropdown-toggle-split';
     caret.setAttribute('data-bs-toggle', 'dropdown');
     caret.setAttribute('aria-label', 'More add options');
-    caret.innerHTML = '<span class="visually-hidden">options</span>';
 
     const menu = document.createElement('ul');
     menu.className = 'dropdown-menu';
@@ -274,9 +265,7 @@ const TableBuilder = (() => {
       li.append(item);
       menu.append(li);
     });
-    const hr = document.createElement('li');
-    hr.innerHTML = '<hr class="dropdown-divider">';
-    menu.append(hr);
+    menu.insertAdjacentHTML('beforeend', '<li><hr class="dropdown-divider"></li>');
     const customLi = document.createElement('li');
     const customBtn = document.createElement('button');
     customBtn.type = 'button';
@@ -296,9 +285,8 @@ const TableBuilder = (() => {
   // Insert `count` rows after the selected row (or at the bottom).
   function insertRows(count) {
     const at = sel ? sel.r : rowsCount() - 1;
-    const empty = () => Array(colsCount()).fill('');
     const block = [];
-    for (let i = 0; i < count; i++) block.push(empty());
+    for (let i = 0; i < count; i++) block.push(Array(colsCount()).fill(''));
     grid.splice(at + 1, 0, ...block);
     render();
   }
@@ -321,7 +309,7 @@ const TableBuilder = (() => {
 
   function addMany(kind, n) {
     if (kind === 'row') insertRows(n); else insertCols(n);
-    toastB('Added ' + n + (kind === 'row' ? (n === 1 ? ' row' : ' rows') : (n === 1 ? ' column' : ' columns')));
+    toastB('Added ' + n + ' ' + kind + (n === 1 ? '' : 's'));
   }
 
   // ------------------------------------------------------------- number modal
@@ -341,7 +329,7 @@ const TableBuilder = (() => {
               </div>
               <div class="modal-footer py-2">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="rmd-num-ok">Add</button>
+                <button type="button" class="btn btn-primary" id="rmd-num-ok"><i class="fa-solid fa-plus"></i> Add</button>
               </div>
             </div>
           </div>`;
@@ -351,6 +339,7 @@ const TableBuilder = (() => {
         const submit = () => {
           const v = Math.min(100, Math.max(1, parseInt(input.value, 10) || 1));
           numModal._resolve(v);
+          numModal._resolve = null;
           bootstrap.Modal.getInstance(numModal).hide();
         };
         ok.addEventListener('click', submit);
@@ -361,13 +350,13 @@ const TableBuilder = (() => {
           if (res) res(null);
         });
       }
+      if (numModal._resolve) return; // already pending; ignore extra dialogs
       numModal.querySelector('#rmd-num-title').textContent = title;
       const input = numModal.querySelector('#rmd-num-input');
       input.value = 4;
       numModal._resolve = resolve;
-      const inst = bootstrap.Modal.getOrCreateInstance(numModal);
       numModal.addEventListener('shown.bs.modal', () => input.select(), { once: true });
-      inst.show();
+      bootstrap.Modal.getOrCreateInstance(numModal).show();
     });
   }
 
@@ -387,13 +376,13 @@ const TableBuilder = (() => {
           <div class="modal-body d-flex flex-column gap-2 p-2" style="min-height:0;">
             <div class="btn-toolbar d-flex gap-1 flex-wrap flex-shrink-0" role="toolbar" aria-label="Inline formatting">
               <div class="btn-group btn-group-sm" role="group">
-                <button class="btn btn-outline-secondary" type="button" data-cmd="bold" title="Bold"><b>B</b></button>
-                <button class="btn btn-outline-secondary" type="button" data-cmd="italic" title="Italic"><i>I</i></button>
-                <button class="btn btn-outline-secondary" type="button" data-cmd="underline" title="Underline"><u>U</u></button>
-                <button class="btn btn-outline-secondary" type="button" data-cmd="strike" title="Strikethrough"><s>S</s></button>
-                <button class="btn btn-outline-secondary" type="button" data-cmd="code" title="Inline code">&lt;/&gt;</button>
-                <button class="btn btn-outline-secondary" type="button" data-cmd="link" title="Link">🔗</button>
-                <button class="btn btn-outline-secondary" type="button" data-cmd="sup" title="Superscript">^</button>
+                <button class="btn btn-outline-secondary" type="button" data-cmd="bold" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-cmd="italic" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-cmd="underline" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-cmd="strike" title="Strikethrough"><i class="fa-solid fa-strikethrough"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-cmd="code" title="Inline code"><i class="fa-solid fa-code"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-cmd="link" title="Link"><i class="fa-solid fa-link"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-cmd="sup" title="Superscript"><i class="fa-solid fa-superscript"></i></button>
               </div>
             </div>
             <div class="border rounded p-2 flex-shrink-0" id="rmd-cell-preview" style="height:34%;overflow:auto;background:#fff;"></div>
@@ -485,6 +474,19 @@ const TableBuilder = (() => {
 
   function delCol(c) {
     if (colsCount() <= 1) { toastB('Cannot delete the last column'); return; }
+    // two-tap guard
+    const b = refs['Delete column'];
+    if (b.dataset.armed !== '1') {
+      b.dataset.armed = '1';
+      b.innerHTML = 'Sure?';
+      setTimeout(() => {
+        b.dataset.armed = '';
+        b.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+      }, 2500);
+      return;
+    }
+    b.dataset.armed = '';
+    b.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
     grid.forEach((row) => row.splice(c, 1));
     align.splice(c, 1);
     sel = null;
@@ -495,6 +497,18 @@ const TableBuilder = (() => {
   function delRow(r) {
     if (r === 0) { toastB('Cannot delete the header row'); return; }
     if (rowsCount() <= 2) { toastB('Keep at least one data row'); return; }
+    const b = refs['Delete row'];
+    if (b.dataset.armed !== '1') {
+      b.dataset.armed = '1';
+      b.innerHTML = 'Sure?';
+      setTimeout(() => {
+        b.dataset.armed = '';
+        b.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+      }, 2500);
+      return;
+    }
+    b.dataset.armed = '';
+    b.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
     grid.splice(r, 1);
     sel = null;
     render();
@@ -560,6 +574,7 @@ const TableBuilder = (() => {
     if (screen) { screen.remove(); screen = null; }
     if (toastEl) { toastEl.remove(); toastEl = null; }
     bar = null;
+    refs = {};
     sel = null;
     onDoneCb = null;
   }

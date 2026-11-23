@@ -1,4 +1,4 @@
-const VERSION = '15';
+const VERSION = '16';
 const CACHE = 'redditmd-v' + VERSION;
 
 // App code is version-pinned with ?v=N in index.html so CDN edges and the
@@ -13,6 +13,9 @@ const CORE = [
   `./app.js?v=${VERSION}`,
   './vendor/css/bootstrap.min.css',
   './vendor/js/bootstrap.bundle.min.js',
+  './vendor/fontawesome/css/all.min.css',
+  './vendor/fontawesome/webfonts/fa-solid-900.woff2',
+  './vendor/fontawesome/webfonts/fa-solid-900.ttf',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png'

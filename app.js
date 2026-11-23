@@ -656,8 +656,8 @@
           '<div class="small text-secondary-emphasis">' + fmtDate(d.updated) + '</div>' +
         '</div>' +
         '<div class="d-flex flex-column flex-sm-row gap-1 flex-shrink-0">' +
-          '<button class="btn btn-outline-secondary btn-sm" data-copy title="Copy markdown">📋</button>' +
-          '<button class="btn btn-outline-danger btn-sm" data-del title="Delete">🗑</button>' +
+          '<button class="btn btn-outline-secondary btn-sm" data-copy title="Copy markdown"><i class="fa-solid fa-copy"></i></button>' +
+          '<button class="btn btn-outline-danger btn-sm" data-del title="Delete"><i class="fa-solid fa-trash-can"></i></button>' +
         '</div>';
       item.querySelector('[data-open]').addEventListener('click', () => openDoc(d.id));
       item.querySelector('[data-copy]').addEventListener('click', async () => {
@@ -693,7 +693,7 @@
         '</div>' +
         '<div class="d-flex flex-sm-row gap-1 flex-shrink-0">' +
           '<button class="btn btn-primary btn-sm" data-use title="Create note from template">Use</button>' +
-          '<button class="btn btn-outline-danger btn-sm" data-del title="Delete">🗑</button>' +
+          '<button class="btn btn-outline-danger btn-sm" data-del title="Delete"><i class="fa-solid fa-trash-can"></i></button>' +
         '</div>';
       item.querySelector('[data-edit]').addEventListener('click', () => openDoc(t.id));
       item.querySelector('[data-use]').addEventListener('click', () => {
