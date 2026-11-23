@@ -430,12 +430,31 @@
     editor.dispatchEvent(new Event('input'));
   }
 
+  // ---------------------------------------------------------------- theme
+  function applyTheme() {
+    const mode = settings.theme || 'auto';
+    const resolved = mode === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : mode;
+    document.documentElement.setAttribute('data-bs-theme', resolved);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', resolved === 'dark' ? '#212529' : '#f2f3f7');
+  }
+  // Live-follow the system when set to Auto.
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
+    if ((settings.theme || 'auto') === 'auto') applyTheme();
+  });
+
   function openSettings() {
     const area = $('#set-emojis');
+    const themeSel = $('#set-theme');
     area.value = (settings.emojis || []).join('\n');
+    themeSel.value = settings.theme || 'auto';
     showModal($('#modal-settings'), () => {
       settings.emojis = area.value.split('\n').map((l) => l.trim()).filter(Boolean);
+      settings.theme = themeSel.value || 'auto';
       saveSettings();
+      applyTheme();
       renderEmojiSheet();
       toast('Settings saved', 'success');
       return true;
@@ -729,6 +748,7 @@
   $('#doc-search').addEventListener('input', renderDocList);
 
   // ---------------------------------------------------------------- init
+  applyTheme();
   showHome();
 
   if ('serviceWorker' in navigator) {

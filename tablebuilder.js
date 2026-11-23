@@ -88,8 +88,11 @@ const TableBuilder = (() => {
     // z-index 1045: above app chrome (FAB ~1030), BELOW Bootstrap's modal
     // layer (backdrop 1050 / modal 1055) so modals stack on top.
     screen.style.cssText =
-      'position:fixed;inset:0;z-index:1045;background:#fff;display:flex;flex-direction:column;' +
+      'position:fixed;inset:0;z-index:1045;display:flex;flex-direction:column;' +
       'padding-top:env(safe-area-inset-top,0);';
+    // bg-body follows the app's data-bs-theme (light/dark), no hardcoded white.
+    // Let the shell use Bootstrap theme variables.
+    screen.classList.add('bg-body', 'text-body');
     screen.innerHTML = `
       <nav class="navbar bg-dark py-1 flex-shrink-0">
         <div class="container-fluid gap-2 px-2">
@@ -385,7 +388,7 @@ const TableBuilder = (() => {
                 <button class="btn btn-outline-secondary" type="button" data-cmd="sup" title="Superscript"><i class="fa-solid fa-superscript"></i></button>
               </div>
             </div>
-            <div class="border rounded p-2 flex-shrink-0" id="rmd-cell-preview" style="height:34%;overflow:auto;background:#fff;"></div>
+            <div class="border rounded p-2 flex-shrink-0 bg-body text-body" id="rmd-cell-preview" style="height:34%;overflow:auto;"></div>
             <textarea class="form-control flex-grow-1" id="rmd-cell-input" rows="4"
               style="min-height:0;font-size:16px;font-family:var(--bs-font-monospace);"
               placeholder="Cell text (markdown)…"></textarea>
