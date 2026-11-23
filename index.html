@@ -148,6 +148,8 @@
                   <ul class="dropdown-menu">
                     <li><button class="dropdown-item" type="button" data-md="code">&lt;/&gt; Inline code</button></li>
                     <li><button class="dropdown-item" type="button" data-md="sup">x² Superscript</button></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><button class="dropdown-item" type="button" id="btn-edit-table">▦ Edit table in builder…</button></li>
                   </ul>
                 </div>
               </div>
@@ -211,6 +213,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-primary" id="btn-tbl-build">Build table…</button>
           <button type="button" class="btn btn-primary" id="btn-tbl-ok">Insert</button>
         </div>
       </div>
@@ -310,8 +313,9 @@
 
   <script src="vendor/js/bootstrap.bundle.min.js"></script>
   <!-- ?v pins cache/CDN version so index.html and app code never mismatch -->
-  <script src="storage.js?v=11"></script>
-  <script src="markdown.js?v=11"></script>
-  <script src="app.js?v=11"></script>
+  <script src="storage.js?v=12"></script>
+  <script src="markdown.js?v=12"></script>
+  <script src="tablebuilder.js?v=12"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>

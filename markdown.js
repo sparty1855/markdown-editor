@@ -403,7 +403,45 @@ const MarkdownEngine = (() => {
     return md.replace(/\r\n?/g, '\n');
   }
 
-  return { toHtml, toText, normalize };
+  // ---- Table utilities shared with the table builder ----------------------
+  // parseTableLines: full table block (header row, separator row, body rows).
+  function parseTableLines(lines) {
+    if (!Array.isArray(lines) || lines.length < 2) return null;
+    if (!tableRowRe.test(lines[0]) || !isTableSplit(lines[1])) return null;
+    const header = splitTableRow(lines[0]);
+    const align = splitTableRow(lines[1]).map((c) => {
+      const l = c.startsWith(':'), r = c.endsWith(':');
+      return l && r ? 'center' : r ? 'right' : l ? 'left' : null;
+    });
+    const rows = [];
+    for (let i = 2; i < lines.length; i++) {
+      if (!lines[i].trim() || !tableRowRe.test(lines[i])) break;
+      rows.push(splitTableRow(lines[i]));
+    }
+    return { header, align, rows };
+  }
+
+  // toTableMarkdown: serialize {header, align, rows} back to pipe markdown.
+  function toTableMarkdown(t) {
+    const n = Math.max(t.header.length, ...t.rows.map((r) => r.length), 1);
+    const cellOf = (s) => (s == null ? '' : String(s).replace(/\|/g, '\\|').replace(/\n/g, ' ').trim());
+    const row = (cells) => '| ' + cells.map((c, i) => cellOf(i < cells.length ? c : '')).join(' | ') + ' |';
+    const header = [];
+    const sep = [];
+    for (let i = 0; i < n; i++) {
+      header.push(t.header[i] ?? '');
+      const a = t.align[i];
+      sep.push(a === 'left' ? ':--' : a === 'right' ? '--:' : a === 'center' ? ':--:' : '--');
+    }
+    const rows = t.rows.map((r) => {
+      const cells = [];
+      for (let i = 0; i < n; i++) cells.push(r[i] ?? '');
+      return row(cells);
+    });
+    return [row(header), row(sep), ...rows].join('\n');
+  }
+
+  return { toHtml, toText, normalize, parseTableLines, toTableMarkdown, splitTableRow, isTableSplit };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = MarkdownEngine;

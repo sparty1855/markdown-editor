@@ -286,7 +286,7 @@
     toast('Pasted', 'success', 1200);
   }
 
-  // --- table: ask for size, then insert
+  // --- table: ask for size — insert directly, or open the table builder
   async function tableFlow() {
     const colsEl = $('#tbl-cols');
     const rowsEl = $('#tbl-rows');
@@ -308,6 +308,77 @@
     }
     insertBlock(table.join('\n'));
   }
+
+  // Launch the table builder with the size chosen in the table modal.
+  $('#btn-tbl-build').addEventListener('click', () => {
+    const cols = Math.min(20, Math.max(1, parseInt($('#tbl-cols').value, 10) || 3));
+    const rows = Math.min(200, Math.max(1, parseInt($('#tbl-rows').value, 10) || 3));
+    bootstrap.Modal.getInstance($('#modal-table'))?.hide();
+    const header = [];
+    for (let c = 0; c < cols; c++) header.push('Column ' + (c + 1));
+    const body = [];
+    for (let r = 0; r < rows; r++) body.push(Array(cols).fill(''));
+    TableBuilder.open({
+      align: Array(cols).fill(null),
+      header,
+      rows: body,
+      onDone: (md) => {
+        insertBlock(md);
+        toast('Table inserted', 'success');
+      }
+    });
+  });
+
+  // Open the table containing the cursor in the table builder.
+  function findTableAtCursor() {
+    const v = editor.value;
+    const pos = editor.selectionStart;
+    const lines = v.split('\n');
+    let offset = 0;
+    let curLine = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (offset <= pos && pos <= offset + lines[i].length) { curLine = i; }
+      offset += lines[i].length + 1;
+    }
+    for (let i = 0; i < lines.length; i++) {
+      if (MarkdownEngine.isTableSplit(lines[i])) continue;
+      const parsed = MarkdownEngine.parseTableLines(lines.slice(i, i + 2));
+      if (!parsed) continue;
+      // full range of the table starting at i
+      let j = i + 2;
+      while (j < lines.length && lines[j].trim() && /^\s*\|.*\|\s*$/.test(lines[j])) j++;
+      if (curLine >= i && curLine < j) {
+        return { start: i, end: j - 1, parsed: MarkdownEngine.parseTableLines(lines.slice(i, j)) };
+      }
+      i = j - 1;
+    }
+    return null;
+  }
+
+  $('#btn-edit-table').addEventListener('click', () => {
+    const found = findTableAtCursor();
+    if (!found || !found.parsed) {
+      toast('Place the cursor inside a table first', 'warning');
+      return;
+    }
+    TableBuilder.open({
+      align: found.parsed.align,
+      header: found.parsed.header,
+      rows: found.parsed.rows,
+      onDone: (md) => {
+        const lines = editor.value.split('\n');
+        lines.splice(found.start, found.end - found.start + 1, ...md.split('\n'));
+        editor.value = lines.join('\n');
+        // park the cursor just after the rebuilt table
+        let offset = 0;
+        for (let i = 0; i <= found.start; i++) offset += lines[i].length + 1;
+        editor.setSelectionRange(offset, offset);
+        editor.focus();
+        editor.dispatchEvent(new Event('input'));
+        toast('Table updated', 'success');
+      }
+    });
+  });
 
   // --- quote: ask for the text, then quote every line at once
   async function quoteFlow() {

@@ -1,4 +1,4 @@
-const VERSION = '11';
+const VERSION = '12';
 const CACHE = 'redditmd-v' + VERSION;
 
 // App code is version-pinned with ?v=N in index.html so CDN edges and the
@@ -9,6 +9,7 @@ const CORE = [
   './manifest.webmanifest',
   `./storage.js?v=${VERSION}`,
   `./markdown.js?v=${VERSION}`,
+  `./tablebuilder.js?v=${VERSION}`,
   `./app.js?v=${VERSION}`,
   './vendor/css/bootstrap.min.css',
   './vendor/js/bootstrap.bundle.min.js',

@@ -115,5 +115,18 @@ const txtT = MarkdownEngine.toText('| Part | Price |\n| --- | --- |\n| CPU | $30
 includes('text table header', txtT, 'Part');
 includes('text table money', txtT, '$300');
 
+// --- table round-trip (shared with the table builder)
+const tP = MarkdownEngine.parseTableLines(['| Name | Qty |', '| :-- | --: |', '| apple | 2 |']);
+check('parseTableLines header', JSON.stringify(tP && tP.header), '["Name","Qty"]');
+check('parseTableLines align', JSON.stringify(tP && tP.align), '["left","right"]');
+check('parseTableLines rows', JSON.stringify(tP && tP.rows), '[["apple","2"]]');
+check('parseTableLines rejects non-table', MarkdownEngine.parseTableLines(['hello', 'world']), null);
+const tM = MarkdownEngine.toTableMarkdown({ header: ['A', 'B'], align: ['center', null], rows: [['x \| y', 'z']] });
+check('toTableMarkdown line 1', tM.split('\n')[0], '| A | B |');
+check('toTableMarkdown align center', tM.split('\n')[1], '| :--: | -- |');
+includes('toTableMarkdown escapes pipes', tM, 'x \\| y');
+const tP2 = MarkdownEngine.parseTableLines(tM.split('\n'));
+check('table round-trip', tP2 && tP2.rows[0][0] === 'x \| y', true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
