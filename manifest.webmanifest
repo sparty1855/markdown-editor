@@ -1,7 +1,7 @@
 {
-  "name": "RedditMD — Markdown writer for Reddit",
-  "short_name": "RedditMD",
-  "description": "Write and preview Reddit-flavored Markdown offline, then copy it for the Reddit app.",
+  "name": "Markdown Editor",
+  "short_name": "Markdown",
+  "description": "Write and preview Reddit-flavored Markdown offline, then paste it into any app.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

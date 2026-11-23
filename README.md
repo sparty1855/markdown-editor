@@ -1,4 +1,4 @@
-# RedditMD — a Reddit-flavored Markdown PWA
+# Markdown Editor — a Reddit-flavored Markdown PWA
 
 A simple, installable Progressive Web App for writing **Reddit-flavored Markdown**, previewing it the way Reddit will render it, and copying it to paste straight into the Reddit app (Android/iOS or desktop).
 
@@ -25,6 +25,8 @@ To **install as an app**: open the page in Chrome/Edge (desktop: install icon in
 - **Autosave**: every edit is saved ~500ms after typing stops. There is no Save button. A note's **title is its first line** (markdown stripped); if the note never gets one it falls back to `Note — <date>`. Empty notes are never persisted.
 - **Inline toolbar** (edit pane): **B** *I* <u>U</u> ~~S~~ `code` link ^sup — inline formatting only.
 - **FAB (+)** in the lower right opens an insert sheet: tables, bulleted/ordered lists, quote, spoiler, divider, headings H1–H4.
+- **Smart Enter**: Enter on a list line continues the list (bullets repeat, ordered markers increment); Enter on a blank list entry ends the list and clears the line.
+- **Indent / outdent** (⇥ / ⇤ on the toolbar) nest or un-nest list lines, with full nested-list rendering in the preview.
 - **Split view**: on desktop the editor and live preview sit side by side; on phones a tab strip switches between them (preview toggleable to raw markdown).
 - **Save as template**: open a note, `⋮ → Save as template`; it appears on the Home Templates tab with a **Use** button to start a new note from it.
 

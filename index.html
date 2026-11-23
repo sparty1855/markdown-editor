@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RedditMD — write Reddit-flavored Markdown</title>
+<title>Markdown Editor</title>
 <meta name="description" content="A simple offline PWA for writing and previewing Reddit-flavored Markdown.">
 <meta name="theme-color" content="#212529">
 <link rel="manifest" href="manifest.webmanifest">
@@ -51,7 +51,7 @@
   <div id="screen-home">
     <nav class="navbar bg-dark navbar-dark py-2">
       <div class="container">
-        <span class="navbar-brand mb-0"><span class="text-warning">⬢</span> RedditMD</span>
+        <span class="navbar-brand mb-0"><span class="text-warning">⬢</span> Markdown Editor</span>
         <button class="btn btn-outline-light btn-sm ms-auto" id="btn-settings" type="button" title="Settings">⚙</button>
       </div>
     </nav>
@@ -132,6 +132,10 @@
                 <div class="btn-group btn-group-sm" role="group" aria-label="Lists">
                   <button class="btn btn-outline-secondary" type="button" data-md="ul" title="Bulleted list">•</button>
                   <button class="btn btn-outline-secondary" type="button" data-md="ol" title="Ordered list">1.</button>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Indentation">
+                  <button class="btn btn-outline-secondary" type="button" data-md="indent" title="Indent (nest list)">⇥</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="outdent" title="Outdent (un-nest)">⇤</button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Emoji">
                   <button class="btn btn-outline-secondary" type="button" data-md="emoji" title="Insert emoji">😀</button>
@@ -306,8 +310,8 @@
 
   <script src="vendor/js/bootstrap.bundle.min.js"></script>
   <!-- ?v pins cache/CDN version so index.html and app code never mismatch -->
-  <script src="storage.js?v=10"></script>
-  <script src="markdown.js?v=10"></script>
-  <script src="app.js?v=10"></script>
+  <script src="storage.js?v=11"></script>
+  <script src="markdown.js?v=11"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

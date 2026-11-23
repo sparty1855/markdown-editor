@@ -100,7 +100,7 @@
 
   // ---------------------------------------------------------------- preview
   function updatePreview() {
-    preview.innerHTML = RedditMD.toHtml(RedditMD.normalize(editor.value));
+    preview.innerHTML = MarkdownEngine.toHtml(MarkdownEngine.normalize(editor.value));
   }
 
   let previewTimer = null;
@@ -255,6 +255,8 @@
     h4: () => prefixLines((l) => '#### ' + l.replace(/^#{1,6}\s*/, '')),
     ul: () => prefixLines((l) => (/^\s*[-*+]\s+/.test(l) ? l : '- ' + l)),
     ol: () => prefixLines((l, i) => (/\d+\.\s/.test(l) ? l : (i + 1) + '. ' + l)),
+    indent: () => prefixLines((l) => '  ' + l),
+    outdent: () => prefixLines((l) => l.replace(/^ {1,2}/, '')),
     spoiler: () => spoilerFlow(),
     rule: () => insertBlock('---'),
     table: () => tableFlow(),
@@ -364,7 +366,7 @@
   // ------------------------------------------------------------- export / import
   $('#btn-export').addEventListener('click', () => {
     const data = {
-      app: 'RedditMD',
+      app: 'Markdown Editor',
       version: 1,
       exported: new Date().toISOString(),
       docs: Store.getAll()
@@ -373,7 +375,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'redditmd-notes-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.download = 'markdown-editor-notes-' + new Date().toISOString().slice(0, 10) + '.json';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -393,7 +395,7 @@
       renderLists();
       toast(`Imported ${res.added} item(s)` + (res.skipped ? `, skipped ${res.skipped} duplicate(s)` : ''), 'success');
     } catch {
-      toast('Import failed — not a valid RedditMD export', 'danger');
+      toast('Import failed — not a valid export file', 'danger');
     }
     e.target.value = '';
   });
@@ -475,13 +477,41 @@
     }
   });
 
+  // --- smart Enter: continue lists; blank entry ends the list
+  editor.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    const s = editor.selectionStart;
+    if (s !== editor.selectionEnd) return;               // selection: default
+    const v = editor.value;
+    const lineStart = v.lastIndexOf('\n', s - 1) + 1;
+    const nl = v.indexOf('\n', s);
+    const lineEnd = nl === -1 ? v.length : nl;
+    if (s !== lineEnd) return;                            // cursor must be at end of line
+    const line = v.slice(lineStart, lineEnd);
+    const m = line.match(/^(\s*)([-*+]|(\d{1,9})[.)])(\s+)(.*)$/);
+    if (!m) return;                                      // not a list line: default
+    e.preventDefault();
+    if (!m[5].trim()) {
+      // Blank entry: the list is done — strip the marker and stay on an empty line.
+      editor.setRangeText('', lineStart, lineEnd, 'preserve');
+      editor.setSelectionRange(lineStart, lineStart);
+    } else {
+      // Continue the list: same indent, increment ordered markers.
+      const num = m[2].match(/^(\d{1,9})([.)])$/);
+      const nextMarker = num ? (parseInt(num[1], 10) + 1) + num[2] : m[2];
+      editor.setRangeText('\n' + m[1] + nextMarker + ' ', s, s, 'end');
+    }
+    editor.focus();
+    editor.dispatchEvent(new Event('input'));
+  });
+
   // ---------------------------------------------------------------- copy
   $('#btn-copy').addEventListener('click', () => {
     flushSave();
-    copyText(RedditMD.normalize(editor.value), 'Markdown');
+    copyText(MarkdownEngine.normalize(editor.value), 'Markdown');
   });
   $('#btn-copy-unicode').addEventListener('click', () => {
-    copyText(RedditMD.toText(RedditMD.normalize(editor.value)), 'Unicode text');
+    copyText(MarkdownEngine.toText(MarkdownEngine.normalize(editor.value)), 'Unicode text');
   });
 
   // ---------------------------------------------------------------- kebab
@@ -560,7 +590,7 @@
         '</div>';
       item.querySelector('[data-open]').addEventListener('click', () => openDoc(d.id));
       item.querySelector('[data-copy]').addEventListener('click', async () => {
-        await copyText(RedditMD.normalize(d.body), d.title);
+        await copyText(MarkdownEngine.normalize(d.body), d.title);
       });
       bindDelete(item.querySelector('[data-del]'), () => {
         Store.remove(d.id);

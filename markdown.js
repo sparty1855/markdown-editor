@@ -3,7 +3,7 @@
  * Renders to HTML for preview, and to "Unicode-pretty" plain text
  * (bold → 𝗯𝗼𝗹𝗱, etc.) for pasting into apps that convert plain text.
  */
-const RedditMD = (() => {
+const MarkdownEngine = (() => {
   const escHtml = (s) => s
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -121,8 +121,8 @@ const RedditMD = (() => {
   // ---- Block parsing -------------------------------------------------------
   const headingRe = /^(#{1,6})\s+(.*)$/;
   const hrRe = /^(-{3,}|\*{3,}|_{3,})\s*$/;
-  const ulRe = /^(\s*)([-*+])\s+(.*)$/;
-  const olRe = /^(\s*)(\d{1,9})[.)]\s+(.*)$/;
+  // A list item: indent, bullet or ordered marker, optional trailing space + text.
+  const listRe = /^(\s*)([-*+]|(\d{1,9})[.)])(?:\s+(.*))?$/;
   const quoteRe = /^(\s*)>\s?(.*)$/;
   const tableRowRe = /^\s*\|(.+)\|\s*$/;
   const tableSplitRe = /^\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/;
@@ -136,6 +136,45 @@ const RedditMD = (() => {
     const s = line.trim();
     if (!s.includes('-')) return false;
     return splitTableRow(s).every((c) => /^:?-{2,}:?$/.test(c.replace(/\s+/g, ''))) && s.includes('|');
+  }
+
+  // Parse a list starting at `start`. Items carry head text plus any deeper
+  // list / continuation lines in `rest` (dedented), which get parsed as blocks.
+  function parseList(lines, start) {
+    const first = lines[start].match(listRe);
+    const baseIndent = first[1].length;
+    const ordered = first[3] != null;
+    const startNum = ordered ? parseInt(first[3], 10) : 1;
+    const items = [];
+    let i = start;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) break;                       // blank line ends the list
+      const m = line.match(listRe);
+      if (m) {
+        const ind = m[1].length;
+        if (ind < baseIndent) break;                 // dedent: a parent list resumes
+        if (ind === baseIndent && (m[3] != null) !== ordered) break; // different list kind
+        if (ind === baseIndent) {
+          // marker = '-'/'+/'*' or '12.'/'3)' — content indent is marker + one space
+          items.push({
+            head: m[4] || '',
+            rest: [],
+            contentIndent: ind + m[2].length + 1
+          });
+          i++;
+          continue;
+        }
+      }
+      // Deeper marker or continuation text: attach to the current item.
+      const cur = items[items.length - 1];
+      if (!cur) break;
+      const lead = (line.match(/^\s*/) || [''])[0].length;
+      const dedent = Math.min(cur.contentIndent, lead);
+      cur.rest.push(line.slice(dedent));
+      i++;
+    }
+    return { block: { t: 'list', ordered, startNum, items }, next: i };
   }
 
   function parseBlocks(lines) {
@@ -187,21 +226,11 @@ const RedditMD = (() => {
         continue;
       }
 
-      // Lists.
-      if (ulRe.test(line) || olRe.test(line)) {
-        const ordered = olRe.test(line);
-        const items = [];
-        while (i < lines.length && (m = lines[i].match(ordered ? olRe : ulRe))) {
-          items.push(m[3]);
-          i++;
-          // continuation lines for lazy paragraphs inside an item
-          while (i < lines.length && lines[i].trim() && !ulRe.test(lines[i]) && !olRe.test(lines[i]) &&
-                 !headingRe.test(lines[i]) && !tableRowRe.test(lines[i]) && !quoteRe.test(lines[i]) && !hrRe.test(lines[i])) {
-            items[items.length - 1] += ' ' + lines[i].trim();
-            i++;
-          }
-        }
-        blocks.push({ t: 'list', ordered, items });
+      // Lists (nested items live in the parent item's `rest`, recursively parsed).
+      if (listRe.test(line) && !hrRe.test(line)) {
+        const parsed = parseList(lines, i);
+        blocks.push(parsed.block);
+        i = parsed.next;
         continue;
       }
 
@@ -211,7 +240,7 @@ const RedditMD = (() => {
       while (i < lines.length && lines[i].trim() &&
              !headingRe.test(lines[i]) && !hrRe.test(lines[i]) &&
              !tableRowRe.test(lines[i]) && !quoteRe.test(lines[i]) &&
-             !ulRe.test(lines[i]) && !olRe.test(lines[i])) {
+             !listRe.test(lines[i])) {
         para.push(lines[i].trim());
         i++;
       }
@@ -231,8 +260,15 @@ const RedditMD = (() => {
         case 'quote': return '<blockquote>' + renderBlocksHtml(parseBlocks(b.lines)) + '</blockquote>';
         case 'list': {
           const tag = b.ordered ? 'ol' : 'ul';
-          const items = b.items.map((it) => '<li>' + renderInlineHtml(tokenizeInline(it)) + '</li>').join('');
-          return '<' + tag + '>' + items + '</' + tag + '>';
+          const startAttr = (b.ordered && b.startNum !== 1) ? ' start="' + b.startNum + '"' : '';
+          const items = b.items.map((it) => {
+            let content = renderInlineHtml(tokenizeInline(it.head));
+            if (it.rest.length) {
+              content += renderBlocksHtml(parseBlocks(it.rest));
+            }
+            return '<li>' + content + '</li>';
+          }).join('');
+          return '<' + tag + startAttr + '>' + items + '</' + tag + '>';
         }
         case 'table': return tableToHtml(b);
         case 'para': return '<p>' + renderInlineHtml(tokenizeInline(b.text)).replace(/\n/g, '<br>') + '</p>';
@@ -316,7 +352,15 @@ const RedditMD = (() => {
         case 'quote': return renderBlocksText(parseBlocks(b.lines))
           .split('\n').map((l) => (l ? '│ ' + l : '│')).join('\n');
         case 'list':
-          return b.items.map((it, idx) => (b.ordered ? (idx + 1) + '. ' : '• ') + renderInlineText(tokenizeInline(it))).join('\n');
+          return b.items.map((it, idx) => {
+            const marker = b.ordered ? (b.startNum + idx) + '. ' : '• ';
+            let nested = '';
+            if (it.rest.length) {
+              nested = '\n' + renderBlocksText(parseBlocks(it.rest))
+                .split('\n').map((l) => (l ? '  ' + l : l)).join('\n');
+            }
+            return marker + renderInlineText(tokenizeInline(it.head)) + nested;
+          }).join('\n');
         case 'table': return tableToText(b);
         case 'para': return renderInlineText(tokenizeInline(b.text));
         default: return '';
@@ -362,4 +406,4 @@ const RedditMD = (() => {
   return { toHtml, toText, normalize };
 })();
 
-if (typeof module !== 'undefined' && module.exports) module.exports = RedditMD;
+if (typeof module !== 'undefined' && module.exports) module.exports = MarkdownEngine;
