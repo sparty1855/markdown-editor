@@ -22,7 +22,8 @@
   }
   #editor:focus { outline: none; box-shadow: none; }
   #preview { height: 100%; overflow: auto; font-size: 16px; overflow-wrap: break-word; }
-  .md-toolbar { overflow-x: auto; }
+  /* NOTE: no overflow rules here — an overflow-x:auto toolbar clips
+     Bootstrap dropdown menus (headings picker, overflow menu). */
   /* Preview typography (rendered markdown), sized for cards. */
   #preview h1 { font-size: 1.6rem; } #preview h2 { font-size: 1.4rem; }
   #preview h3 { font-size: 1.2rem; } #preview h4 { font-size: 1.05rem; }
