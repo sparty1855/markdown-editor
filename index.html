@@ -78,11 +78,15 @@
   <!-- =========================== EDITOR SCREEN =========================== -->
   <div id="screen-editor" class="d-flex flex-column d-none">
 
-    <!-- Top bar: back, live title, copy, kebab -->
+    <!-- Top bar: back, pane toggle (phones), copy, kebab -->
     <nav class="navbar bg-dark navbar-dark py-1 flex-shrink-0">
       <div class="container-fluid gap-2 px-2">
         <button class="btn btn-outline-light btn-sm" id="btn-back" type="button" title="Back to notes">←</button>
-        <span class="navbar-text text-truncate flex-grow-1" id="title-live">Note</span>
+        <div class="btn-group btn-group-sm ms-2 d-lg-none" role="group" aria-label="Switch panes">
+          <button class="btn btn-outline-light" id="tab-edit" type="button" aria-pressed="true">✎ Edit</button>
+          <button class="btn btn-outline-light" id="tab-preview" type="button" aria-pressed="false">👁 Preview</button>
+        </div>
+        <div class="flex-grow-1"></div>
         <span class="badge text-bg-warning d-none" id="badge-template">Template</span>
         <button class="btn btn-success btn-sm" id="btn-copy" type="button" title="Copy markdown">📋<span class="d-none d-sm-inline ms-1">Copy</span></button>
         <div class="dropdown">
@@ -95,16 +99,6 @@
       </div>
     </nav>
 
-    <!-- Edit / Preview tabs (phones) -->
-    <ul class="nav nav-tabs justify-content-center d-lg-none flex-shrink-0 pt-1 px-2" id="view-tabs" role="tablist">
-      <li class="nav-item flex-fill" role="presentation">
-        <button class="nav-link w-100" id="tab-edit" type="button" role="tab" aria-selected="true">✎ Edit</button>
-      </li>
-      <li class="nav-item flex-fill" role="presentation">
-        <button class="nav-link w-100" id="tab-preview" type="button" role="tab" aria-selected="false">👁 Preview</button>
-      </li>
-    </ul>
-
     <!-- Work area -->
     <main class="container-fluid app-main d-flex flex-column flex-grow-1 px-0">
       <div class="row g-0 flex-grow-1 app-main">
@@ -113,7 +107,7 @@
         <div class="col-12 col-lg-6 d-flex flex-column app-pane" id="col-editor">
           <div class="card border-top-0 border-bottom-0 border-start-0 rounded-0 h-100 app-pane">
             <div class="card-header py-1 px-1">
-              <div class="btn-toolbar md-toolbar gap-1" role="toolbar" aria-label="Inline formatting">
+              <div class="btn-toolbar md-toolbar gap-1" role="toolbar" aria-label="Formatting">
                 <div class="btn-group btn-group-sm" role="group" aria-label="Inline formatting">
                   <button class="btn btn-outline-secondary" type="button" data-md="bold" title="Bold"><b>B</b></button>
                   <button class="btn btn-outline-secondary" type="button" data-md="italic" title="Italic"><i>I</i></button>
@@ -123,10 +117,20 @@
                   <button class="btn btn-outline-secondary" type="button" data-md="link" title="Link">🔗</button>
                   <button class="btn btn-outline-secondary" type="button" data-md="sup" title="Superscript">^</button>
                 </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Headings">
+                  <button class="btn btn-outline-secondary" type="button" data-md="h1" title="Heading 1">H1</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="h2" title="Heading 2">H2</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="h3" title="Heading 3">H3</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="h4" title="Heading 4">H4</button>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Lists">
+                  <button class="btn btn-outline-secondary" type="button" data-md="ul" title="Bulleted list">•</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="ol" title="Ordered list">1.</button>
+                </div>
               </div>
             </div>
             <div class="card-body p-0 flex-grow-1 app-pane">
-              <textarea id="editor" class="p-2" spellcheck="true" autocapitalize="sentences"
+              <textarea id="editor" class="p-2 pb-5" spellcheck="true" autocapitalize="sentences"
                 placeholder="# Note title&#10;&#10;The first line becomes the note's title. Everything is saved automatically."></textarea>
             </div>
           </div>
@@ -135,12 +139,6 @@
         <!-- Preview column -->
         <div class="col-12 col-lg-6 d-flex flex-column app-pane d-none" id="col-preview">
           <div class="card border-top-0 border-bottom-0 border-end-0 rounded-0 h-100 app-pane">
-            <div class="card-header py-1 d-flex flex-wrap gap-2 align-items-center">
-              <div class="btn-group btn-group-sm" role="group" aria-label="Preview mode">
-                <button class="btn btn-outline-secondary active" type="button" id="mode-render">Reddit preview</button>
-                <button class="btn btn-outline-secondary" type="button" id="mode-raw">Raw</button>
-              </div>
-            </div>
             <div class="card-body p-0 flex-grow-1 app-pane">
               <div id="preview" class="p-3" aria-live="polite"></div>
             </div>
@@ -150,7 +148,7 @@
       </div>
     </main>
 
-    <!-- FAB: insert block elements -->
+    <!-- FAB: insert block elements (hidden in preview mode) -->
     <button class="btn btn-primary" id="fab-insert" type="button" title="Insert">+</button>
   </div>
 
@@ -163,15 +161,55 @@
     <div class="offcanvas-body pt-2">
       <div class="row g-2 insert-grid">
         <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="table">▦ Table</button></div>
-        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="ul">• Bulleted list</button></div>
-        <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="ol">1. Ordered list</button></div>
         <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="quote">❝ Quote</button></div>
         <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="spoiler">⛔ Spoiler</button></div>
         <div class="col-6 col-sm-4"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="rule">— Divider</button></div>
-        <div class="col-3 col-sm-2"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="h1">H1</button></div>
-        <div class="col-3 col-sm-2"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="h2">H2</button></div>
-        <div class="col-3 col-sm-2"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="h3">H3</button></div>
-        <div class="col-3 col-sm-2"><button class="btn btn-outline-secondary w-100 h-100" type="button" data-md="h4">H4</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table size modal -->
+  <div class="modal fade" id="modal-table" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Insert table</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body row g-3">
+          <div class="col-6">
+            <label class="form-label" for="tbl-cols">Columns</label>
+            <input type="number" class="form-control" id="tbl-cols" min="1" max="20" value="3" inputmode="numeric">
+          </div>
+          <div class="col-6">
+            <label class="form-label" for="tbl-rows">Data rows</label>
+            <input type="number" class="form-control" id="tbl-rows" min="1" max="200" value="3" inputmode="numeric">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btn-tbl-ok">Insert</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quote text modal -->
+  <div class="modal fade" id="modal-quote" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Insert quote</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label" for="quote-text">Text to quote</label>
+          <textarea class="form-control" id="quote-text" rows="6" placeholder="Paste or write anything — every line becomes part of the quote."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btn-quote-ok">Insert</button>
+        </div>
       </div>
     </div>
   </div>

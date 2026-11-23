@@ -7,10 +7,10 @@
   const $ = (sel) => document.querySelector(sel);
   const editor = $('#editor');
   const preview = $('#preview');
+  const insertSheet = $('#insert-sheet');
 
   let currentId = null;      // persisted doc id (null until first autosave)
   let currentIsTemplate = false;
-  let rawMode = false;
   let saveTimer = null;
 
   // ---------------------------------------------------------------- helpers
@@ -70,15 +70,37 @@
     }
   }
 
+  // Simple modal helper: shows a Bootstrap modal, resolves with a callback's
+  // value on OK, or null when dismissed. Cleanup is automatic.
+  function showModal(modalEl, onOk, focusEl) {
+    return new Promise((resolve) => {
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      const okBtn = modalEl.querySelector('.modal-footer .btn-primary');
+      const cleanup = (val) => {
+        okBtn.removeEventListener('click', onOkClick);
+        modalEl.removeEventListener('hidden.bs.modal', onHidden);
+        modal.hide();
+        resolve(val);
+      };
+      const onOkClick = () => {
+        const val = onOk();
+        if (val !== false) cleanup(val);
+      };
+      const onHidden = () => {
+        okBtn.removeEventListener('click', onOkClick);
+        modalEl.removeEventListener('hidden.bs.modal', onHidden);
+        resolve(null);
+      };
+      okBtn.addEventListener('click', onOkClick);
+      modalEl.addEventListener('hidden.bs.modal', onHidden);
+      modalEl.addEventListener('shown.bs.modal', () => focusEl && focusEl.focus(), { once: true });
+      modal.show();
+    });
+  }
+
   // ---------------------------------------------------------------- preview
   function updatePreview() {
-    const md = RedditMD.normalize(editor.value);
-    if (rawMode) {
-      preview.innerHTML = '<pre style="white-space:pre-wrap;margin:0"></pre>';
-      preview.firstChild.textContent = md;
-    } else {
-      preview.innerHTML = RedditMD.toHtml(md);
-    }
+    preview.innerHTML = RedditMD.toHtml(RedditMD.normalize(editor.value));
   }
 
   let previewTimer = null;
@@ -86,19 +108,6 @@
     clearTimeout(previewTimer);
     previewTimer = setTimeout(updatePreview, 120);
   }
-
-  $('#mode-render').addEventListener('click', () => {
-    rawMode = false;
-    $('#mode-render').classList.add('active');
-    $('#mode-raw').classList.remove('active');
-    updatePreview();
-  });
-  $('#mode-raw').addEventListener('click', () => {
-    rawMode = true;
-    $('#mode-raw').classList.add('active');
-    $('#mode-render').classList.remove('active');
-    updatePreview();
-  });
 
   // ------------------------------------------------------------- pane tabs
   const isPhone = () => window.matchMedia('(max-width: 991.98px)').matches;
@@ -112,17 +121,21 @@
     } else {
       editCol.classList.toggle('d-none', which !== 'edit');
       prevCol.classList.toggle('d-none', which !== 'preview');
-      if (which === 'preview') updatePreview();
     }
-    $('#tab-edit').classList.toggle('active', !desktop && which === 'edit');
-    $('#tab-edit').setAttribute('aria-selected', String(!desktop && which === 'edit'));
-    $('#tab-preview').classList.toggle('active', !desktop && which === 'preview');
-    $('#tab-preview').setAttribute('aria-selected', String(!desktop && which === 'preview'));
+    // The FAB inserts into the text — meaningless while reading the preview.
+    const fabHidden = which !== 'edit';
+    $('#fab-insert').classList.toggle('d-none', fabHidden);
+    if (fabHidden) bootstrap.Offcanvas.getInstance(insertSheet)?.hide();
+    if (which === 'preview') updatePreview();
+    $('#tab-edit').classList.toggle('active', which === 'edit');
+    $('#tab-edit').setAttribute('aria-pressed', String(which === 'edit'));
+    $('#tab-preview').classList.toggle('active', which === 'preview');
+    $('#tab-preview').setAttribute('aria-pressed', String(which === 'preview'));
   }
   $('#tab-edit').addEventListener('click', () => setPane('edit'));
   $('#tab-preview').addEventListener('click', () => setPane('preview'));
   window.matchMedia('(min-width: 992px)').addEventListener('change', () => {
-    setPane(isPhone() ? 'edit' : 'preview');
+    setPane(isPhone() ? 'edit' : 'edit');
   });
 
   // ---------------------------------------------------------------- screens
@@ -138,7 +151,7 @@
     $('#screen-editor').classList.remove('d-none');
     $('#badge-template').classList.toggle('d-none', !currentIsTemplate);
     $('#btn-toggle-template').textContent = currentIsTemplate ? 'Convert back to note' : 'Save as template';
-    setPane(isPhone() ? 'edit' : 'preview');
+    setPane('edit');
     updatePreview();
   }
 
@@ -146,9 +159,7 @@
     currentId = null;
     currentIsTemplate = !!(opts && opts.isTemplate);
     editor.value = (opts && opts.body) || '';
-    $('#title-live').textContent = derivedTitle(editor.value);
     showEditor();
-    setPane('edit');
     if (!isPhone()) editor.focus();
   }
 
@@ -158,15 +169,12 @@
     currentId = doc.id;
     currentIsTemplate = !!doc.template;
     editor.value = doc.body;
-    $('#title-live').textContent = derivedTitle(doc.body);
     showEditor();
-    setPane('edit');
     if (!isPhone()) editor.focus();
   }
 
   // ---------------------------------------------------------------- autosave
   editor.addEventListener('input', () => {
-    $('#title-live').textContent = derivedTitle(editor.value);
     schedulePreview();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(flushSave, 500);
@@ -190,7 +198,6 @@
     currentIsTemplate = !!saved.template;
   }
 
-  // Persist on background/close, and discard empty notes.
   window.addEventListener('pagehide', () => flushSave());
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushSave();
@@ -227,6 +234,13 @@
     editor.dispatchEvent(new Event('input'));
   }
 
+  function insertBlock(text) {
+    const start = editor.selectionStart;
+    editor.setRangeText('\n' + text + '\n', start, start, 'end');
+    editor.focus();
+    editor.dispatchEvent(new Event('input'));
+  }
+
   const actions = {
     bold: () => wrapSelection('**', '**', 'bold text'),
     italic: () => wrapSelection('*', '*', 'italic text'),
@@ -235,33 +249,54 @@
     code: () => wrapSelection('`', '`', 'code'),
     sup: () => wrapSelection('^(', ')', 'superscript'),
     link: () => wrapSelection('[', '](https://example.com)', 'label'),
-    quote: () => prefixLines((l) => (l.startsWith('> ') ? l.slice(2) : '> ' + l)),
-    spoiler: () => wrapSelection('>!', '!<', 'spoiler text'),
     h1: () => prefixLines((l) => '# ' + l.replace(/^#{1,6}\s*/, '')),
     h2: () => prefixLines((l) => '## ' + l.replace(/^#{1,6}\s*/, '')),
     h3: () => prefixLines((l) => '### ' + l.replace(/^#{1,6}\s*/, '')),
     h4: () => prefixLines((l) => '#### ' + l.replace(/^#{1,6}\s*/, '')),
     ul: () => prefixLines((l) => (/^\s*[-*+]\s+/.test(l) ? l : '- ' + l)),
     ol: () => prefixLines((l, i) => (/\d+\.\s/.test(l) ? l : (i + 1) + '. ' + l)),
-    rule: () => wrapSelection('\n\n---\n\n', '', ''),
-    table: () => insertTable()
+    spoiler: () => wrapSelection('>!', '!<', 'spoiler text'),
+    rule: () => insertBlock('---'),
+    table: () => tableFlow(),
+    quote: () => quoteFlow()
   };
 
-  function insertTable() {
-    const cols = 3, rows = 3;
+  // --- table: ask for size, then insert
+  async function tableFlow() {
+    const colsEl = $('#tbl-cols');
+    const rowsEl = $('#tbl-rows');
+    colsEl.value = 3;
+    rowsEl.value = 3;
+    const dims = await showModal($('#modal-table'), () => {
+      const cols = Math.min(20, Math.max(1, parseInt(colsEl.value, 10) || 3));
+      const rows = Math.min(200, Math.max(1, parseInt(rowsEl.value, 10) || 3));
+      return { cols, rows };
+    }, colsEl);
+    if (!dims) return;
     const header = [];
-    for (let c = 0; c < cols; c++) header.push('Column ' + (c + 1));
+    for (let c = 0; c < dims.cols; c++) header.push('Column ' + (c + 1));
     const table = [];
     table.push('| ' + header.join(' | ') + ' |');
     table.push('|' + header.map(() => ' --- ').join('|') + '|');
-    for (let r = 0; r < rows; r++) table.push('|   |   |   |');
-    const start = editor.selectionStart;
-    editor.setRangeText('\n' + table.join('\n') + '\n', start, start, 'end');
-    editor.focus();
-    editor.dispatchEvent(new Event('input'));
+    for (let r = 0; r < dims.rows; r++) {
+      table.push('| ' + header.map(() => '  ').join(' | ') + ' |');
+    }
+    insertBlock(table.join('\n'));
   }
 
-  const insertSheet = document.querySelector('#insert-sheet');
+  // --- quote: ask for the text, then quote every line at once
+  async function quoteFlow() {
+    const textEl = $('#quote-text');
+    textEl.value = '';
+    const text = await showModal($('#modal-quote'), () => {
+      if (!textEl.value.trim()) return false;   // keep modal open on empty
+      return textEl.value.replace(/\s+$/, '');
+    }, textEl);
+    if (!text) return;
+    const quoted = text.split('\n').map((l) => '> ' + l).join('\n');
+    insertBlock(quoted);
+  }
+
   document.querySelectorAll('[data-md]').forEach((btn) => {
     btn.addEventListener('click', () => {
       actions[btn.dataset.md]();
@@ -269,7 +304,7 @@
       bootstrap.Offcanvas.getInstance(insertSheet)?.hide();
     });
   });
-  document.querySelector('#fab-insert').addEventListener('click', () => {
+  $('#fab-insert').addEventListener('click', () => {
     bootstrap.Offcanvas.getOrCreateInstance(insertSheet).show();
   });
 
@@ -279,7 +314,6 @@
     if (k === 'b') { e.preventDefault(); actions.bold(); }
     else if (k === 'i') { e.preventDefault(); actions.italic(); }
     else if (k === 'k') { e.preventDefault(); actions.link(); }
-    else if (e.key === 'Tab') { /* unreachable on most keyboards with modifiers */ }
   });
   editor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
