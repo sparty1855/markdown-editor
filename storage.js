@@ -13,8 +13,21 @@ const Store = (() => {
         docs = JSON.parse(localStorage.getItem(KEY)) || [];
         if (!Array.isArray(docs)) docs = [];
       } catch { docs = []; }
+      sanitize();
     }
     return docs;
+  }
+
+  // Guard against duplicate ids (historic autosave races): keep the most
+  // recently updated copy of each id.
+  function sanitize() {
+    const seen = new Map();
+    for (const d of docs) {
+      if (!d || !d.id) continue;
+      const prev = seen.get(d.id);
+      if (!prev || (d.updated || 0) >= (prev.updated || 0)) seen.set(d.id, d);
+    }
+    docs = [...seen.values()];
   }
 
   function persist() {

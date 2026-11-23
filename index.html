@@ -114,8 +114,8 @@
                 <div class="btn-group btn-group-sm" role="group" aria-label="Inline formatting">
                   <button class="btn btn-outline-secondary" type="button" data-md="bold" title="Bold"><i class="fa-solid fa-bold"></i></button>
                   <button class="btn btn-outline-secondary" type="button" data-md="italic" title="Italic"><i class="fa-solid fa-italic"></i></button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="underline" title="Underline"><i class="fa-solid fa-underline"></i></button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="strike" title="Strikethrough"><i class="fa-solid fa-strikethrough"></i></button>
+                  <button class="btn btn-outline-secondary d-none d-sm-inline-flex" type="button" data-md="underline" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                  <button class="btn btn-outline-secondary d-none d-sm-inline-flex" type="button" data-md="strike" title="Strikethrough"><i class="fa-solid fa-strikethrough"></i></button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Link">
                   <button class="btn btn-outline-secondary" type="button" data-md="link" title="Link"><i class="fa-solid fa-link"></i></button>
@@ -134,7 +134,7 @@
                   <button class="btn btn-outline-secondary" type="button" data-md="ul" title="Bulleted list"><i class="fa-solid fa-list-ul"></i></button>
                   <button class="btn btn-outline-secondary" type="button" data-md="ol" title="Ordered list"><i class="fa-solid fa-list-ol"></i></button>
                 </div>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Indentation">
+                <div class="btn-group btn-group-sm d-none d-sm-inline-flex" role="group" aria-label="Indentation">
                   <button class="btn btn-outline-secondary" type="button" data-md="indent" title="Indent (nest list)"><i class="fa-solid fa-indent"></i></button>
                   <button class="btn btn-outline-secondary" type="button" data-md="outdent" title="Outdent (un-nest)"><i class="fa-solid fa-outdent"></i></button>
                 </div>
@@ -149,6 +149,10 @@
                   <ul class="dropdown-menu">
                     <li><button class="dropdown-item" type="button" data-md="code"><i class="fa-solid fa-code"></i> Inline code</button></li>
                     <li><button class="dropdown-item" type="button" data-md="sup"><i class="fa-solid fa-superscript"></i> Superscript</button></li>
+                    <li><button class="dropdown-item" type="button" data-md="underline"><i class="fa-solid fa-underline"></i> Underline</button></li>
+                    <li><button class="dropdown-item" type="button" data-md="strike"><i class="fa-solid fa-strikethrough"></i> Strikethrough</button></li>
+                    <li><button class="dropdown-item" type="button" data-md="indent"><i class="fa-solid fa-indent"></i> Indent</button></li>
+                    <li><button class="dropdown-item" type="button" data-md="outdent"><i class="fa-solid fa-outdent"></i> Outdent</button></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><button class="dropdown-item" type="button" id="btn-edit-table"><i class="fa-solid fa-table-columns"></i> Edit table in builder…</button></li>
                   </ul>
@@ -314,9 +318,9 @@
 
   <script src="vendor/js/bootstrap.bundle.min.js"></script>
   <!-- ?v pins cache/CDN version so index.html and app code never mismatch -->
-  <script src="storage.js?v=16"></script>
-  <script src="markdown.js?v=16"></script>
-  <script src="tablebuilder.js?v=16"></script>
-  <script src="app.js?v=16"></script>
+  <script src="storage.js?v=17"></script>
+  <script src="markdown.js?v=17"></script>
+  <script src="tablebuilder.js?v=17"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

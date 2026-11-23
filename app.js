@@ -140,7 +140,7 @@
 
   // ---------------------------------------------------------------- screens
   function showHome() {
-    flushSave();
+    flushSave({ create: false });   // boot/home transitions must not create docs
     $('#screen-editor').classList.add('d-none');
     $('#screen-home').classList.remove('d-none');
     renderLists();
@@ -180,10 +180,19 @@
     saveTimer = setTimeout(flushSave, 500);
   });
 
-  function flushSave() {
+  // Flush the autosave. `opts.create` (default true) allows the flush to
+  // create a NEW document from the editor contents; when false (used on
+  // boot/home transitions), only an already-persisted doc is updated — this
+  // prevents duplicate notes when state is fresh but the editor still
+  // carries content (page restore, upgrade reload timing).
+  function flushSave(opts) {
+    const create = !(opts && opts.create === false);
     clearTimeout(saveTimer);
     const body = editor.value;
-    if (!currentId && !body.trim()) return;  // don't persist untouched new notes
+    if (!currentId) {
+      if (!create) return;                       // boot/home: never spawn docs
+      if (!body.trim()) return;                   // don't persist untouched new notes
+    }
     let doc;
     if (currentId) {
       doc = Store.get(currentId);
