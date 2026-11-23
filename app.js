@@ -255,10 +255,11 @@
     h4: () => prefixLines((l) => '#### ' + l.replace(/^#{1,6}\s*/, '')),
     ul: () => prefixLines((l) => (/^\s*[-*+]\s+/.test(l) ? l : '- ' + l)),
     ol: () => prefixLines((l, i) => (/\d+\.\s/.test(l) ? l : (i + 1) + '. ' + l)),
-    spoiler: () => wrapSelection('>!', '!<', 'spoiler text'),
+    spoiler: () => spoilerFlow(),
     rule: () => insertBlock('---'),
     table: () => tableFlow(),
-    quote: () => quoteFlow()
+    quote: () => quoteFlow(),
+    emoji: () => showEmojiSheet()
   };
 
   // --- table: ask for size, then insert
@@ -295,6 +296,84 @@
     if (!text) return;
     const quoted = text.split('\n').map((l) => '> ' + l).join('\n');
     insertBlock(quoted);
+  }
+
+  // --- spoiler: same pattern — ask for the text, wrap it as a spoiler
+  async function spoilerFlow() {
+    const textEl = $('#spoiler-text');
+    textEl.value = '';
+    const text = await showModal($('#modal-spoiler'), () => {
+      if (!textEl.value.trim()) return false;
+      return textEl.value.replace(/\s+$/, '');
+    }, textEl);
+    if (!text) return;
+    insertBlock('>!' + text + '!<');
+  }
+
+  // ---------------------------------------------------------------- emoji & settings
+  const SETTINGS_KEY = 'redditmd.settings';
+  function getSettings() {
+    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch { return {}; }
+  }
+  let settings = getSettings();
+  function saveSettings() {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }
+
+  function insertAtCursor(text) {
+    editor.setRangeText(text, editor.selectionStart, editor.selectionEnd, 'end');
+    editor.focus();
+    editor.dispatchEvent(new Event('input'));
+  }
+
+  function openSettings() {
+    const area = $('#set-emojis');
+    area.value = (settings.emojis || []).join('\n');
+    showModal($('#modal-settings'), () => {
+      settings.emojis = area.value.split('\n').map((l) => l.trim()).filter(Boolean);
+      saveSettings();
+      renderEmojiSheet();
+      toast('Settings saved', 'success');
+      return true;
+    }, area);
+  }
+  $('#btn-settings').addEventListener('click', openSettings);
+  $('#btn-emoji-manage').addEventListener('click', () => {
+    bootstrap.Offcanvas.getInstance($('#emoji-sheet'))?.hide();
+    openSettings();
+  });
+
+  function renderEmojiSheet() {
+    const grid = $('#emoji-grid');
+    grid.innerHTML = '';
+    const list = settings.emojis || [];
+    if (!list.length) {
+      grid.innerHTML =
+        '<div class="col-12"><p class="text-muted small mb-2">No favorite emojis yet. Tap ' +
+        '<strong>⚙ Edit favorite emojis</strong> below to add some.</p></div>';
+      return;
+    }
+    for (const emo of list) {
+      const col = document.createElement('div');
+      col.className = 'col-3 col-sm-2';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-outline-secondary w-100';
+      btn.style.fontSize = '1.6rem';
+      btn.style.minHeight = '3rem';
+      btn.textContent = emo;
+      btn.addEventListener('click', () => {
+        insertAtCursor(emo);
+        bootstrap.Offcanvas.getInstance($('#emoji-sheet'))?.hide();
+      });
+      col.appendChild(btn);
+      grid.appendChild(col);
+    }
+  }
+
+  function showEmojiSheet() {
+    renderEmojiSheet();
+    bootstrap.Offcanvas.getOrCreateInstance($('#emoji-sheet')).show();
   }
 
   document.querySelectorAll('[data-md]').forEach((btn) => {
@@ -471,5 +550,13 @@
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Reload once when a new service worker takes over, so new versions
+    // appear without manually clearing site data.
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
   }
 })();
