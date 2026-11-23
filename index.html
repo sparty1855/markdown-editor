@@ -83,13 +83,13 @@
     <nav class="navbar bg-dark navbar-dark py-1 flex-shrink-0">
       <div class="container-fluid gap-2 px-2">
         <button class="btn btn-outline-light btn-sm" id="btn-back" type="button" title="Back to notes">←</button>
-        <div class="btn-group btn-group-sm ms-2 d-lg-none" role="group" aria-label="Switch panes">
-          <button class="btn btn-outline-light" id="tab-edit" type="button" aria-pressed="true">✎ Edit</button>
-          <button class="btn btn-outline-light" id="tab-preview" type="button" aria-pressed="false">👁 Preview</button>
+        <div class="btn-group btn-group-sm flex-grow-1 mx-2 d-lg-none" role="group" aria-label="Switch panes">
+          <button class="btn btn-outline-light flex-fill" id="tab-edit" type="button" aria-pressed="true">✎ Edit</button>
+          <button class="btn btn-outline-light flex-fill" id="tab-preview" type="button" aria-pressed="false">👁 Preview</button>
         </div>
-        <div class="flex-grow-1"></div>
+        <div class="flex-grow-1 d-none d-lg-block"></div>
         <span class="badge text-bg-warning d-none" id="badge-template">Template</span>
-        <button class="btn btn-success btn-sm" id="btn-copy" type="button" title="Copy markdown">📋<span class="d-none d-sm-inline ms-1">Copy</span></button>
+        <button class="btn btn-success btn-sm" id="btn-copy" type="button" title="Copy markdown">Copy</button>
         <div class="dropdown">
           <button class="btn btn-outline-light btn-sm" data-bs-toggle="dropdown" type="button" aria-label="More actions">⋮</button>
           <ul class="dropdown-menu dropdown-menu-end">
@@ -114,15 +114,19 @@
                   <button class="btn btn-outline-secondary" type="button" data-md="italic" title="Italic"><i>I</i></button>
                   <button class="btn btn-outline-secondary" type="button" data-md="underline" title="Underline"><u>U</u></button>
                   <button class="btn btn-outline-secondary" type="button" data-md="strike" title="Strikethrough"><s>S</s></button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="code" title="Inline code">&lt;/&gt;</button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="link" title="Link">🔗</button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="sup" title="Superscript">^</button>
                 </div>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Headings">
-                  <button class="btn btn-outline-secondary" type="button" data-md="h1" title="Heading 1">H1</button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="h2" title="Heading 2">H2</button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="h3" title="Heading 3">H3</button>
-                  <button class="btn btn-outline-secondary" type="button" data-md="h4" title="Heading 4">H4</button>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Link">
+                  <button class="btn btn-outline-secondary" type="button" data-md="link" title="Link">🔗</button>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Heading">
+                  <button class="btn btn-outline-secondary" type="button" id="hdr-btn" title="Apply heading">H1</button>
+                  <button class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split" type="button" data-bs-toggle="dropdown" aria-label="Choose heading level"><span class="visually-hidden">Choose heading</span></button>
+                  <ul class="dropdown-menu">
+                    <li><button class="dropdown-item" type="button" data-h="1">Heading 1</button></li>
+                    <li><button class="dropdown-item" type="button" data-h="2">Heading 2</button></li>
+                    <li><button class="dropdown-item" type="button" data-h="3">Heading 3</button></li>
+                    <li><button class="dropdown-item" type="button" data-h="4">Heading 4</button></li>
+                  </ul>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Lists">
                   <button class="btn btn-outline-secondary" type="button" data-md="ul" title="Bulleted list">•</button>
@@ -132,7 +136,14 @@
                   <button class="btn btn-outline-secondary" type="button" data-md="emoji" title="Insert emoji">😀</button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Paste">
-                  <button class="btn btn-outline-secondary" type="button" data-md="paste" title="Paste from clipboard">📋 Paste</button>
+                  <button class="btn btn-outline-secondary" type="button" data-md="paste" title="Paste from clipboard">📋</button>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="More formatting">
+                  <button class="btn btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-label="More formatting">⋯</button>
+                  <ul class="dropdown-menu">
+                    <li><button class="dropdown-item" type="button" data-md="code">&lt;/&gt; Inline code</button></li>
+                    <li><button class="dropdown-item" type="button" data-md="sup">x² Superscript</button></li>
+                  </ul>
                 </div>
               </div>
             </div>

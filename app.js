@@ -409,6 +409,20 @@
     bootstrap.Offcanvas.getOrCreateInstance(insertSheet).show();
   });
 
+  // --- dynamic heading button: shows the active level, applies it on tap
+  let hdrLevel = Math.min(4, Math.max(1, parseInt(localStorage.getItem('redditmd.hdr'), 10) || 1));
+  const hdrBtn = $('#hdr-btn');
+  function setHdrLevel(n) {
+    hdrLevel = n;
+    localStorage.setItem('redditmd.hdr', String(n));
+    hdrBtn.textContent = 'H' + n;
+  }
+  setHdrLevel(hdrLevel);
+  hdrBtn.addEventListener('click', () => actions['h' + hdrLevel]());
+  document.querySelectorAll('[data-h]').forEach((item) => {
+    item.addEventListener('click', () => setHdrLevel(parseInt(item.dataset.h, 10)));
+  });
+
   editor.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey)) return;
     const k = e.key.toLowerCase();
