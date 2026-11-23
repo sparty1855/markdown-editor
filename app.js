@@ -15,24 +15,34 @@
   // ------------------------------------------------------------- pane tabs
   const isPhone = () => window.matchMedia('(max-width: 991.98px)').matches;
   function setPane(which) {
-    const showPreview = which === 'preview';
-    document.body.classList.toggle('show-preview', showPreview);
-    $('#tab-edit').classList.toggle('active', !showPreview);
-    $('#tab-edit').setAttribute('aria-selected', String(!showPreview));
-    $('#tab-preview').classList.toggle('active', showPreview);
-    $('#tab-preview').setAttribute('aria-selected', String(showPreview));
-    if (showPreview) updatePreview();
-    localStorage.setItem('redditmd.pane', which);
+    const desktop = !isPhone();
+    const editCol = $('#col-editor');
+    const prevCol = $('#col-preview');
+    if (desktop) {
+      // Side-by-side: both columns always visible.
+      editCol.classList.remove('d-none');
+      prevCol.classList.remove('d-none');
+    } else {
+      // Phone tabs: show one pane at a time via Bootstrap's d-none utility.
+      editCol.classList.toggle('d-none', which !== 'edit');
+      prevCol.classList.toggle('d-none', which !== 'preview');
+      if (which === 'preview') updatePreview();
+      localStorage.setItem('redditmd.pane', which);
+    }
+    const editActive = !desktop && which === 'edit';
+    const prevActive = !desktop && which === 'preview';
+    $('#tab-edit').classList.toggle('active', editActive);
+    $('#tab-edit').setAttribute('aria-selected', String(editActive));
+    $('#tab-preview').classList.toggle('active', prevActive);
+    $('#tab-preview').setAttribute('aria-selected', String(prevActive));
   }
   $('#tab-edit').addEventListener('click', () => setPane('edit'));
   $('#tab-preview').addEventListener('click', () => setPane('preview'));
   // On phones start on whichever pane the user last used (default: edit).
-  if (isPhone()) setPane(localStorage.getItem('redditmd.pane') || 'edit');
-  else setPane('preview');
+  setPane(isPhone() ? (localStorage.getItem('redditmd.pane') || 'edit') : 'preview');
   // Keep tabs consistent when the viewport crosses the breakpoint.
   window.matchMedia('(min-width: 992px)').addEventListener('change', (e) => {
-    if (e.matches) setPane('preview');
-    else setPane(localStorage.getItem('redditmd.pane') || 'edit');
+    setPane(e.matches ? 'preview' : (localStorage.getItem('redditmd.pane') || 'edit'));
   });
 
   // ---------------------------------------------------------------- helpers
