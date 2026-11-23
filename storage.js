@@ -51,7 +51,36 @@ const Store = (() => {
   function getDocs() { return load().filter((d) => !d.template); }
   function getTemplates() { return load().filter((d) => !!d.template); }
 
-  return { getAll, get, put, remove, getDocs, getTemplates };
+  // Merge imported docs: exact duplicates (same title+body) are skipped,
+  // colliding ids get fresh ones.
+  function importAll(docs) {
+    const list = load();
+    const knownContent = new Set(list.map((d) => (d.title || '') + '\u0000' + (d.body || '')));
+    const knownIds = new Set(list.map((d) => d.id));
+    let added = 0, skipped = 0;
+    for (const d of docs) {
+      if (!d || typeof d.title !== 'string' || typeof d.body !== 'string') continue;
+      const key = (d.title || '') + '\u0000' + (d.body || '');
+      if (knownContent.has(key)) { skipped++; continue; }
+      knownContent.add(key);
+      let id = d.id;
+      while (!id || knownIds.has(id)) id = uid();
+      knownIds.add(id);
+      list.push({
+        id,
+        title: d.title,
+        body: d.body,
+        template: !!d.template,
+        created: d.created || Date.now(),
+        updated: d.updated || Date.now()
+      });
+      added++;
+    }
+    persist();
+    return { added, skipped };
+  }
+
+  return { getAll, get, put, remove, getDocs, getTemplates, importAll };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = Store;

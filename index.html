@@ -280,6 +280,18 @@
           <textarea class="form-control" id="set-emojis" rows="5"
             placeholder="One emoji (or short string) per line, e.g.&#10;🚀&#10;🔥&#10;🐧"></textarea>
           <div class="form-text">These appear in the editor toolbar's 😀 picker while you write.</div>
+          <hr>
+          <label class="form-label mb-0"><strong>Data</strong></label>
+          <div class="row g-2 mt-1">
+            <div class="col-6">
+              <button class="btn btn-outline-secondary w-100" id="btn-export" type="button">⬇ Export JSON</button>
+            </div>
+            <div class="col-6">
+              <button class="btn btn-outline-secondary w-100" id="btn-import" type="button">⬆ Import JSON</button>
+            </div>
+          </div>
+          <div class="form-text">Export downloads every note and template as JSON; import merges them in (exact duplicates skipped).</div>
+          <input type="file" id="import-file" accept="application/json,.json" class="d-none">
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -293,8 +305,9 @@
   <div id="toast-holder" class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3"></div>
 
   <script src="vendor/js/bootstrap.bundle.min.js"></script>
-  <script src="storage.js"></script>
-  <script src="markdown.js"></script>
-  <script src="app.js"></script>
+  <!-- ?v pins cache/CDN version so index.html and app code never mismatch -->
+  <script src="storage.js?v=10"></script>
+  <script src="markdown.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

@@ -1,11 +1,15 @@
-const CACHE = 'redditmd-v9';
+const VERSION = '10';
+const CACHE = 'redditmd-v' + VERSION;
+
+// App code is version-pinned with ?v=N in index.html so CDN edges and the
+// cache never mix versions. Vendor files never change once published.
 const CORE = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './storage.js',
-  './markdown.js',
-  './app.js',
+  `./storage.js?v=${VERSION}`,
+  `./markdown.js?v=${VERSION}`,
+  `./app.js?v=${VERSION}`,
   './vendor/css/bootstrap.min.css',
   './vendor/js/bootstrap.bundle.min.js',
   './icons/icon-192.png',
@@ -13,11 +17,20 @@ const CORE = [
   './icons/icon-maskable-512.png'
 ];
 
+// Same-origin app code must always be checked against the network first,
+// otherwise index.html v(N) can load app.js v(N-1) from cache and features
+// silently go missing.
+const FRESH_FIRST = [
+  /\/index\.html(\?|$)/,
+  /\/(app|markdown|storage)\.js(\?|$)/,
+  /\/manifest\.webmanifest$/
+];
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE)
       .then((cache) => cache.addAll(CORE))
-      .then(() => self.skipWaiting())   // activate immediately
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -25,7 +38,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())  // take control of open pages
+      .then(() => self.clients.claim())
   );
 });
 
@@ -35,8 +48,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // App shell / navigations: network-first so new versions are picked up.
-  if (req.mode === 'navigate' || url.pathname.endsWith('/index.html')) {
+  if (req.mode === 'navigate' || FRESH_FIRST.some((re) => re.test(url.pathname))) {
+    // Network-first with cache fallback (offline).
     event.respondWith(
       fetch(req)
         .then((res) => {
@@ -49,7 +62,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else: serve from cache instantly, refresh in background.
+  // Static assets: serve instantly from cache, refresh in the background.
   event.respondWith(
     caches.match(req).then((hit) => {
       const refresh = fetch(req).then((res) => {

@@ -360,6 +360,43 @@
     }, area);
   }
   $('#btn-settings').addEventListener('click', openSettings);
+
+  // ------------------------------------------------------------- export / import
+  $('#btn-export').addEventListener('click', () => {
+    const data = {
+      app: 'RedditMD',
+      version: 1,
+      exported: new Date().toISOString(),
+      docs: Store.getAll()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'redditmd-notes-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Exported ' + data.docs.length + ' item(s)', 'success');
+  });
+
+  $('#btn-import').addEventListener('click', () => $('#import-file').click());
+  $('#import-file').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const docs = Array.isArray(parsed) ? parsed : parsed.docs;
+      if (!Array.isArray(docs)) throw new Error('no docs array');
+      const res = Store.importAll(docs);
+      renderLists();
+      toast(`Imported ${res.added} item(s)` + (res.skipped ? `, skipped ${res.skipped} duplicate(s)` : ''), 'success');
+    } catch {
+      toast('Import failed — not a valid RedditMD export', 'danger');
+    }
+    e.target.value = '';
+  });
   $('#btn-emoji-manage').addEventListener('click', () => {
     bootstrap.Offcanvas.getInstance($('#emoji-sheet'))?.hide();
     openSettings();
