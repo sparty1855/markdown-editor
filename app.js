@@ -109,6 +109,160 @@
     previewTimer = setTimeout(updatePreview, 120);
   }
 
+  // ------------------------------------------------------------- undo / redo
+  // Steps (not keystrokes). A step is closed by: a toolbar/builder action,
+  // our paste button, Smart Enter, an OS paste/cut/drop, a line break,
+  // sentence-ending punctuation (after >=3 typed chars), a burst of >=30
+  // deletions, or a ~1.2s typing pause. Undo with a partial step commits
+  // the partial as its own step first (per spec).
+  const UNDO_MAX = 100;      // in-memory steps
+  const UNDO_PERSIST = 5;     // persisted across refreshes (common area)
+  const UNDO_KEY = 'redditmd.undo.v1';
+  let states = [];           // [{text, cursor}] — document states
+  let pointer = -1;          // index of the current state
+  let undoNoteId;             // note whose undo state we hold (undefined = none yet)
+  let pending = false;       // uncommitted changes since the last step
+  let typedChars = 0;        // chars typed since the last step (punctuation rule)
+  let deleteBurst = 0;       // deletions since the last step
+  let pauseTimer = null;
+  let lastInputAt = 0;
+
+  function snapshotState() {
+    return { text: editor.value, cursor: editor.selectionStart };
+  }
+
+  // Commit the current (pending) state as a step; no-op when nothing is pending.
+  function undoCommitPending() {
+    clearTimeout(pauseTimer);
+    pauseTimer = null;
+    typedChars = 0;
+    deleteBurst = 0;
+    if (!pending) return;
+    states.splice(pointer + 1);            // leave the redo branch behind
+    states.push(snapshotState());
+    if (states.length > UNDO_MAX) states.shift();
+    pointer = states.length - 1;
+    pending = false;
+    persistUndo();
+    updateUndoButtons();
+  }
+
+  // Alias used by action wrappers (toolbar, builder, paste button, …).
+  function undoBoundary() {
+    undoCommitPending();
+  }
+
+  function restore(st) {
+    editor.value = st.text;
+    try { editor.setSelectionRange(st.cursor, st.cursor); } catch { /* ignore */ }
+    schedulePreview();                      // refresh preview + autosave
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, 500);
+  }
+
+  function doUndo() {
+    undoCommitPending();                    // partial becomes its own step first
+    if (pointer <= 0) return;
+    pointer--;
+    restore(states[pointer]);
+    updateUndoButtons();
+    persistUndo();
+  }
+
+  function doRedo() {
+    if (pointer >= states.length - 1) return;
+    pointer++;
+    restore(states[pointer]);
+    updateUndoButtons();
+    persistUndo();
+  }
+
+  function updateUndoButtons() {
+    const u = $('#tbb-undo'), r = $('#tbb-redo');
+    if (u) u.disabled = !(pointer > 0 || pending);
+    if (r) r.disabled = !(pointer < states.length - 1);
+  }
+
+  function handleInputForUndo(e) {
+    const t = e.inputType;
+    if (!t) { pending = true; return; }    // synthetic (our own programmatic edits)
+    const FORCE = new Set([
+      'insertFromPaste', 'insertLineBreak', 'insertParagraph',
+      'insertFromDrop', 'deleteByCut', 'insertReplacementText'
+    ]);
+    if (FORCE.has(t)) {
+      pending = true;
+      undoCommitPending();                 // OS paste / enter / cut = its own step
+      return;
+    }
+    pending = true;
+    if (t === 'insertText' || t === 'insertCompositionText') {
+      typedChars += (e.data || '').length || 1;
+      // Sentence-ending punctuation closes a step (after >= 3 chars).
+      if (typedChars >= 3 && /[.!?]/.test(e.data || '')) {
+        undoCommitPending();
+        return;
+      }
+    } else if (t.indexOf('delete') === 0) {
+      deleteBurst += 1;
+      if (deleteBurst >= 30) { undoCommitPending(); return; }
+    }
+    // Typing-pause coalescer: close the step after ~1.2s of quiet.
+    lastInputAt = Date.now();
+    clearTimeout(pauseTimer);
+    pauseTimer = setTimeout(() => {
+      if (pending && Date.now() - lastInputAt >= 1150) undoCommitPending();
+    }, 1200);
+  }
+
+  // ---------------- undo persistence (common area, keyed by note id)
+  function persistUndo() {
+    if (undoNoteId == null || states.length === 0) {
+      try { localStorage.removeItem(UNDO_KEY); } catch { /* ignore */ }
+      return;
+    }
+    const s = states.slice(-UNDO_PERSIST);
+    const ptr = Math.max(0, Math.min(pointer, s.length - 1));
+    try {
+      const payload = JSON.stringify({ noteId: undoNoteId, pointer: ptr, states: s });
+      if (payload.length < 120000) localStorage.setItem(UNDO_KEY, payload);
+    } catch { /* quota: keep undo in memory only */ }
+  }
+
+  // Load undo state for `noteId`; falls back to a fresh single-state baseline.
+  function loadUndo(noteId, text) {
+    undoNoteId = noteId;
+    states = [{ text, cursor: 0 }];
+    pointer = 0;
+    pending = false;
+    typedChars = 0;
+    deleteBurst = 0;
+    if (noteId != null) {
+      try {
+        const raw = JSON.parse(localStorage.getItem(UNDO_KEY));
+        if (raw && raw.noteId === noteId && Array.isArray(raw.states) && raw.states.length) {
+          states = raw.states.map((st) => ({ text: String(st.text ?? ''), cursor: +st.cursor || 0 }));
+          pointer = Math.min(Math.max(0, +raw.pointer || 0), states.length - 1);
+          // The last (unsaved) partial after a refresh becomes its own step.
+          if (states[pointer].text !== text) {
+            states.splice(pointer + 1);
+            states.push({ text, cursor: text.length });
+            pointer = states.length - 1;
+          }
+          pending = false;
+        }
+      } catch { /* ignore */ }
+    }
+    updateUndoButtons();
+  }
+
+  // Switch undo context: same note keeps everything, different note resets.
+  function switchUndoContext(noteId, text) {
+    if (undoNoteId === noteId) { updateUndoButtons(); return; }
+    loadUndo(noteId, text);
+    persistUndo();
+  }
+
   // ------------------------------------------------------------- pane tabs
   const isPhone = () => window.matchMedia('(max-width: 991.98px)').matches;
   function setPane(which) {
@@ -159,6 +313,7 @@
     currentId = null;
     currentIsTemplate = !!(opts && opts.isTemplate);
     editor.value = (opts && opts.body) || '';
+    switchUndoContext(null, editor.value);
     showEditor();
     if (!isPhone()) editor.focus();
   }
@@ -169,15 +324,19 @@
     currentId = doc.id;
     currentIsTemplate = !!doc.template;
     editor.value = doc.body;
+    // Same note keeps undo state (even after a round trip through Home).
+    switchUndoContext(doc.id, editor.value);
     showEditor();
     if (!isPhone()) editor.focus();
   }
 
   // ---------------------------------------------------------------- autosave
-  editor.addEventListener('input', () => {
+  editor.addEventListener('input', (e) => {
     schedulePreview();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(flushSave, 500);
+    handleInputForUndo(e);
+    updateUndoButtons();
   });
 
   // Flush the autosave. `opts.create` (default true) allows the flush to
@@ -205,11 +364,15 @@
     const saved = Store.put(doc);
     currentId = saved.id;
     currentIsTemplate = !!saved.template;
+    if (undoNoteId == null && currentId) {
+      undoNoteId = currentId;   // new note just got its persistent id
+      persistUndo();
+    }
   }
 
-  window.addEventListener('pagehide', () => flushSave());
+  window.addEventListener('pagehide', () => { flushSave(); persistUndo(); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') flushSave();
+    if (document.visibilityState === 'hidden') { flushSave(); persistUndo(); }
   });
 
   $('#btn-back').addEventListener('click', () => {
@@ -333,6 +496,7 @@
       rows: body,
       onDone: (md) => {
         insertBlock(md);
+        undoBoundary();
         toast('Table inserted', 'success');
       }
     });
@@ -384,6 +548,7 @@
         editor.setSelectionRange(offset, offset);
         editor.focus();
         editor.dispatchEvent(new Event('input'));
+        undoBoundary();
         toast('Table updated', 'success');
       }
     });
@@ -524,6 +689,7 @@
       btn.textContent = emo;
       btn.addEventListener('click', () => {
         insertAtCursor(emo);
+        undoBoundary();
         bootstrap.Offcanvas.getInstance($('#emoji-sheet'))?.hide();
       });
       col.appendChild(btn);
@@ -538,7 +704,7 @@
 
   document.querySelectorAll('[data-md]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      actions[btn.dataset.md]();
+      Promise.resolve(actions[btn.dataset.md]()).then(() => undoBoundary());
       // Close the insert sheet if it's open (its buttons also carry data-md).
       bootstrap.Offcanvas.getInstance(insertSheet)?.hide();
     });
@@ -546,6 +712,8 @@
   $('#fab-insert').addEventListener('click', () => {
     bootstrap.Offcanvas.getOrCreateInstance(insertSheet).show();
   });
+  $('#tbb-undo')?.addEventListener('click', () => { doUndo(); editor.focus(); });
+  $('#tbb-redo')?.addEventListener('click', () => { doRedo(); editor.focus(); });
 
   // --- dynamic heading button: shows the active level, applies it on tap
   let hdrLevel = Math.min(4, Math.max(1, parseInt(localStorage.getItem('redditmd.hdr'), 10) || 1));
@@ -556,7 +724,7 @@
     hdrBtn.textContent = 'H' + n;
   }
   setHdrLevel(hdrLevel);
-  hdrBtn.addEventListener('click', () => actions['h' + hdrLevel]());
+  hdrBtn.addEventListener('click', () => Promise.resolve(actions['h' + hdrLevel]()).then(() => undoBoundary()));
   document.querySelectorAll('[data-h]').forEach((item) => {
     item.addEventListener('click', () => setHdrLevel(parseInt(item.dataset.h, 10)));
   });
@@ -567,6 +735,8 @@
     if (k === 'b') { e.preventDefault(); actions.bold(); }
     else if (k === 'i') { e.preventDefault(); actions.italic(); }
     else if (k === 'k') { e.preventDefault(); actions.link(); }
+    else if (k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); }
+    else if (k === 'y') { e.preventDefault(); doRedo(); }
   });
   editor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
@@ -602,6 +772,7 @@
     }
     editor.focus();
     editor.dispatchEvent(new Event('input'));
+    undoBoundary();
   });
 
   // ---------------------------------------------------------------- copy
