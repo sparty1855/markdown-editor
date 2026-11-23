@@ -259,8 +259,30 @@
     rule: () => insertBlock('---'),
     table: () => tableFlow(),
     quote: () => quoteFlow(),
-    emoji: () => showEmojiSheet()
+    emoji: () => showEmojiSheet(),
+    paste: () => pasteFlow()
   };
+
+  // --- paste: read the clipboard and insert at the cursor
+  async function pasteFlow() {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      toast('This browser doesn\u2019t support clipboard paste — use long-press instead', 'warning');
+      return;
+    }
+    let text;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      toast('Paste was blocked — use long-press instead', 'warning');
+      return;
+    }
+    if (!text) {
+      toast('Clipboard is empty', 'secondary');
+      return;
+    }
+    insertAtCursor(text);
+    toast('Pasted', 'success', 1200);
+  }
 
   // --- table: ask for size, then insert
   async function tableFlow() {
