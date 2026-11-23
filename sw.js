@@ -1,4 +1,4 @@
-const CACHE = 'redditmd-v3';
+const CACHE = 'redditmd-v4';
 const CORE = [
   './',
   './index.html',

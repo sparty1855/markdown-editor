@@ -1,5 +1,5 @@
 /*
- * app.js — UI glue: editor, preview, copy, save, templates, service worker.
+ * app.js — Home screen (notes & templates) + Editor screen (autosaving).
  */
 (() => {
   'use strict';
@@ -7,46 +7,14 @@
   const $ = (sel) => document.querySelector(sel);
   const editor = $('#editor');
   const preview = $('#preview');
-  const titleInput = $('#doc-title');
-  let currentId = null;   // id of doc being edited (null = unsaved new doc)
+
+  let currentId = null;      // persisted doc id (null until first autosave)
   let currentIsTemplate = false;
   let rawMode = false;
-
-  // ------------------------------------------------------------- pane tabs
-  const isPhone = () => window.matchMedia('(max-width: 991.98px)').matches;
-  function setPane(which) {
-    const desktop = !isPhone();
-    const editCol = $('#col-editor');
-    const prevCol = $('#col-preview');
-    if (desktop) {
-      // Side-by-side: both columns always visible.
-      editCol.classList.remove('d-none');
-      prevCol.classList.remove('d-none');
-    } else {
-      // Phone tabs: show one pane at a time via Bootstrap's d-none utility.
-      editCol.classList.toggle('d-none', which !== 'edit');
-      prevCol.classList.toggle('d-none', which !== 'preview');
-      if (which === 'preview') updatePreview();
-      localStorage.setItem('redditmd.pane', which);
-    }
-    const editActive = !desktop && which === 'edit';
-    const prevActive = !desktop && which === 'preview';
-    $('#tab-edit').classList.toggle('active', editActive);
-    $('#tab-edit').setAttribute('aria-selected', String(editActive));
-    $('#tab-preview').classList.toggle('active', prevActive);
-    $('#tab-preview').setAttribute('aria-selected', String(prevActive));
-  }
-  $('#tab-edit').addEventListener('click', () => setPane('edit'));
-  $('#tab-preview').addEventListener('click', () => setPane('preview'));
-  // On phones start on whichever pane the user last used (default: edit).
-  setPane(isPhone() ? (localStorage.getItem('redditmd.pane') || 'edit') : 'preview');
-  // Keep tabs consistent when the viewport crosses the breakpoint.
-  window.matchMedia('(min-width: 992px)').addEventListener('change', (e) => {
-    setPane(e.matches ? 'preview' : (localStorage.getItem('redditmd.pane') || 'edit'));
-  });
+  let saveTimer = null;
 
   // ---------------------------------------------------------------- helpers
-  function toast(msg, variant = 'secondary', ms = 2600) {
+  function toast(msg, variant = 'secondary', ms = 2400) {
     const el = document.createElement('div');
     el.className = `toast align-items-center text-bg-${variant} border-0`;
     el.role = 'alert';
@@ -58,33 +26,48 @@
     el.addEventListener('hidden.bs.toast', () => el.remove());
   }
 
-  function promptModal(title, label, initial) {
-    return new Promise((resolve) => {
-      const modalEl = $('#modal-prompt');
-      $('#modal-prompt-title').textContent = title;
-      $('#modal-prompt-label').textContent = label;
-      const input = $('#modal-prompt-input');
-      input.value = initial || '';
-      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-      const ok = $('#modal-prompt-ok');
-      const done = (val) => {
-        modal.hide();
-        ok.removeEventListener('click', onOk);
-        input.removeEventListener('keydown', onKey);
-        resolve(val);
-      };
-      const onOk = () => done(input.value.trim() || null);
-      const onKey = (e) => { if (e.key === 'Enter') onOk(); };
-      ok.addEventListener('click', onOk);
-      input.addEventListener('keydown', onKey);
-      modalEl.addEventListener('shown.bs.modal', () => input.select(), { once: true });
-      modal.show();
-    });
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  function confirmDelete() {
-    // No native confirm styling; use a toast-based double-check variable.
-    return window.confirm('Delete this item? This cannot be undone.');
+  function fmtDate(ts) {
+    return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // The note's title is the first non-empty line, markdown stripped.
+  function derivedTitle(body) {
+    const first = (body || '').split('\n').map((l) => l.trim()).find((l) => l);
+    const cleaned = first ? first.replace(/^#{1,6}\s*/, '').replace(/[*_~`]+/g, '').trim() : '';
+    if (cleaned) return cleaned.slice(0, 90);
+    return 'Note — ' + new Date().toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function snippet(body) {
+    const lines = (body || '').split('\n').map((l) => l.trim());
+    const firstIdx = lines.findIndex((l) => l);
+    return (lines.slice(firstIdx + 1).find((l) => l) || '').slice(0, 120);
+  }
+
+  async function copyText(text, label) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(label + ' copied to clipboard', 'success');
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        toast(label + ' copied to clipboard', 'success');
+      } catch {
+        toast('Copy failed', 'danger');
+      }
+      ta.remove();
+    }
   }
 
   // ---------------------------------------------------------------- preview
@@ -99,37 +82,126 @@
   }
 
   let previewTimer = null;
-  editor.addEventListener('input', () => {
-    saveDraft();
+  function schedulePreview() {
     clearTimeout(previewTimer);
     previewTimer = setTimeout(updatePreview, 120);
-  });
-
-  // Pasting a link over a selection on mobile puts the URL in both places;
-  // common annoyance — nothing to fix here, but keep paste plain (no formatting).
-
-  // Keep the layout inside the visible viewport when the on-screen keyboard
-  // opens (Android resizes; iOS overlays — this handles both).
-  if (window.visualViewport) {
-    const fitVv = () => {
-      document.body.style.height = window.visualViewport.height + 'px';
-    };
-    window.visualViewport.addEventListener('resize', fitVv);
-    fitVv();
   }
+
   $('#mode-render').addEventListener('click', () => {
     rawMode = false;
     $('#mode-render').classList.add('active');
     $('#mode-raw').classList.remove('active');
-    $('#btn-copy-preview').hidden = true;
     updatePreview();
   });
   $('#mode-raw').addEventListener('click', () => {
     rawMode = true;
     $('#mode-raw').classList.add('active');
     $('#mode-render').classList.remove('active');
-    $('#btn-copy-preview').hidden = false;
     updatePreview();
+  });
+
+  // ------------------------------------------------------------- pane tabs
+  const isPhone = () => window.matchMedia('(max-width: 991.98px)').matches;
+  function setPane(which) {
+    const desktop = !isPhone();
+    const editCol = $('#col-editor');
+    const prevCol = $('#col-preview');
+    if (desktop) {
+      editCol.classList.remove('d-none');
+      prevCol.classList.remove('d-none');
+    } else {
+      editCol.classList.toggle('d-none', which !== 'edit');
+      prevCol.classList.toggle('d-none', which !== 'preview');
+      if (which === 'preview') updatePreview();
+    }
+    $('#tab-edit').classList.toggle('active', !desktop && which === 'edit');
+    $('#tab-edit').setAttribute('aria-selected', String(!desktop && which === 'edit'));
+    $('#tab-preview').classList.toggle('active', !desktop && which === 'preview');
+    $('#tab-preview').setAttribute('aria-selected', String(!desktop && which === 'preview'));
+  }
+  $('#tab-edit').addEventListener('click', () => setPane('edit'));
+  $('#tab-preview').addEventListener('click', () => setPane('preview'));
+  window.matchMedia('(min-width: 992px)').addEventListener('change', () => {
+    setPane(isPhone() ? 'edit' : 'preview');
+  });
+
+  // ---------------------------------------------------------------- screens
+  function showHome() {
+    flushSave();
+    $('#screen-editor').classList.add('d-none');
+    $('#screen-home').classList.remove('d-none');
+    renderLists();
+  }
+
+  function showEditor() {
+    $('#screen-home').classList.add('d-none');
+    $('#screen-editor').classList.remove('d-none');
+    $('#badge-template').classList.toggle('d-none', !currentIsTemplate);
+    $('#btn-toggle-template').textContent = currentIsTemplate ? 'Convert back to note' : 'Save as template';
+    setPane(isPhone() ? 'edit' : 'preview');
+    updatePreview();
+  }
+
+  function newDoc(opts) {
+    currentId = null;
+    currentIsTemplate = !!(opts && opts.isTemplate);
+    editor.value = (opts && opts.body) || '';
+    $('#title-live').textContent = derivedTitle(editor.value);
+    showEditor();
+    setPane('edit');
+    if (!isPhone()) editor.focus();
+  }
+
+  function openDoc(id) {
+    const doc = Store.get(id);
+    if (!doc) return;
+    currentId = doc.id;
+    currentIsTemplate = !!doc.template;
+    editor.value = doc.body;
+    $('#title-live').textContent = derivedTitle(doc.body);
+    showEditor();
+    setPane('edit');
+    if (!isPhone()) editor.focus();
+  }
+
+  // ---------------------------------------------------------------- autosave
+  editor.addEventListener('input', () => {
+    $('#title-live').textContent = derivedTitle(editor.value);
+    schedulePreview();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, 500);
+  });
+
+  function flushSave() {
+    clearTimeout(saveTimer);
+    const body = editor.value;
+    if (!currentId && !body.trim()) return;  // don't persist untouched new notes
+    let doc;
+    if (currentId) {
+      doc = Store.get(currentId);
+      if (!doc) { currentId = null; return; }
+    } else {
+      doc = { title: '', body: '', template: currentIsTemplate };
+    }
+    doc.body = body;
+    doc.title = derivedTitle(body);
+    const saved = Store.put(doc);
+    currentId = saved.id;
+    currentIsTemplate = !!saved.template;
+  }
+
+  // Persist on background/close, and discard empty notes.
+  window.addEventListener('pagehide', () => flushSave());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushSave();
+  });
+
+  $('#btn-back').addEventListener('click', () => {
+    if (currentId && !editor.value.trim()) {
+      Store.remove(currentId);        // user emptied an existing note then left
+      toast('Note deleted (empty)', 'secondary');
+    }
+    showHome();
   });
 
   // ---------------------------------------------------------------- toolbar
@@ -146,12 +218,11 @@
   function prefixLines(prefixFn) {
     const start = editor.selectionStart, end = editor.selectionEnd;
     const value = editor.value;
-    let lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
     let lineEnd = value.indexOf('\n', end);
     if (lineEnd === -1) lineEnd = value.length;
     const lines = value.slice(lineStart, lineEnd).split('\n');
-    const replacement = lines.map((l, i) => prefixFn(l, i)).join('\n');
-    editor.setRangeText(replacement, lineStart, lineEnd, 'end');
+    editor.setRangeText(lines.map((l, i) => prefixFn(l, i)).join('\n'), lineStart, lineEnd, 'end');
     editor.focus();
     editor.dispatchEvent(new Event('input'));
   }
@@ -160,12 +231,13 @@
     bold: () => wrapSelection('**', '**', 'bold text'),
     italic: () => wrapSelection('*', '*', 'italic text'),
     underline: () => wrapSelection('<u>', '</u>', 'underlined'),
-    strike: () => wrapSelection('~~', '~~', 'struck through'),
+    strike: () => wrapSelection('~~', '~~', 'struck text'),
     code: () => wrapSelection('`', '`', 'code'),
+    sup: () => wrapSelection('^(', ')', 'superscript'),
     link: () => wrapSelection('[', '](https://example.com)', 'label'),
     quote: () => prefixLines((l) => (l.startsWith('> ') ? l.slice(2) : '> ' + l)),
     spoiler: () => wrapSelection('>!', '!<', 'spoiler text'),
-    h1: () => prefixLines((l) => l.replace(/^#{1,6}\s*/, '') ? '# ' + l.replace(/^#{1,6}\s*/, '') : '# '),
+    h1: () => prefixLines((l) => '# ' + l.replace(/^#{1,6}\s*/, '')),
     h2: () => prefixLines((l) => '## ' + l.replace(/^#{1,6}\s*/, '')),
     h3: () => prefixLines((l) => '### ' + l.replace(/^#{1,6}\s*/, '')),
     h4: () => prefixLines((l) => '#### ' + l.replace(/^#{1,6}\s*/, '')),
@@ -175,38 +247,30 @@
     table: () => insertTable()
   };
 
-  // Fix h1 action (was too clever, simplify).
-  actions.h1 = () => prefixLines((l) => '# ' + l.replace(/^#{1,6}\s*/, ''));
-
   function insertTable() {
     const cols = 3, rows = 3;
-    const table = [];
     const header = [];
     for (let c = 0; c < cols; c++) header.push('Column ' + (c + 1));
+    const table = [];
     table.push('| ' + header.join(' | ') + ' |');
     table.push('|' + header.map(() => ' --- ').join('|') + '|');
-    for (let r = 0; r < rows; r++) {
-      const row = [];
-      for (let c = 0; c < cols; c++) row.push('  ');
-      table.push('| ' + row.join(' | ') + ' |');
-    }
-    const text = table.join('\n');
+    for (let r = 0; r < rows; r++) table.push('|   |   |   |');
     const start = editor.selectionStart;
-    editor.setRangeText('\n' + text + '\n', start, start, 'end');
+    editor.setRangeText('\n' + table.join('\n') + '\n', start, start, 'end');
     editor.focus();
     editor.dispatchEvent(new Event('input'));
   }
 
+  const insertSheet = document.querySelector('#insert-sheet');
   document.querySelectorAll('[data-md]').forEach((btn) => {
-    btn.addEventListener('click', () => actions[btn.dataset.md]());
+    btn.addEventListener('click', () => {
+      actions[btn.dataset.md]();
+      // Close the insert sheet if it's open (its buttons also carry data-md).
+      bootstrap.Offcanvas.getInstance(insertSheet)?.hide();
+    });
   });
-
-  let wrap = true;
-  $('#btn-wrap').addEventListener('click', () => {
-    wrap = !wrap;
-    editor.setAttribute('wrap', wrap ? 'soft' : 'off');
-    $('#btn-wrap').classList.toggle('active', !wrap);
-    toast(wrap ? 'Soft wrap on' : 'Soft wrap off');
+  document.querySelector('#fab-insert').addEventListener('click', () => {
+    bootstrap.Offcanvas.getOrCreateInstance(insertSheet).show();
   });
 
   editor.addEventListener('keydown', (e) => {
@@ -215,10 +279,8 @@
     if (k === 'b') { e.preventDefault(); actions.bold(); }
     else if (k === 'i') { e.preventDefault(); actions.italic(); }
     else if (k === 'k') { e.preventDefault(); actions.link(); }
-    else if (k === 's') { e.preventDefault(); saveDoc(); }
+    else if (e.key === 'Tab') { /* unreachable on most keyboards with modifiers */ }
   });
-
-  // Tab inserts two spaces instead of moving focus.
   editor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -228,121 +290,62 @@
   });
 
   // ---------------------------------------------------------------- copy
-  async function copyText(text, label) {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast(label + ' copied to clipboard', 'success');
-    } catch {
-      // Fallback for older browsers / non-secure contexts.
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-        toast(label + ' copied to clipboard', 'success');
-      } catch {
-        toast('Copy failed — select the raw text and copy manually', 'danger');
-      }
-      ta.remove();
-    }
-  }
-
   $('#btn-copy').addEventListener('click', () => {
+    flushSave();
     copyText(RedditMD.normalize(editor.value), 'Markdown');
   });
-  $('#btn-copy-preview').addEventListener('click', () => {
+  $('#btn-copy-unicode').addEventListener('click', () => {
     copyText(RedditMD.toText(RedditMD.normalize(editor.value)), 'Unicode text');
   });
 
-  // ---------------------------------------------------------------- docs
-  function saveDraft() {
-    if (currentId) return; // docs in the store save explicitly via Save
-    localStorage.setItem('redditmd.draft', JSON.stringify({ t: titleInput.value, m: editor.value }));
-  }
-  function loadDraft() {
-    try {
-      const d = JSON.parse(localStorage.getItem('redditmd.draft'));
-      if (d) { titleInput.value = d.t || ''; editor.value = d.m || ''; }
-    } catch { /* ignore */ }
-  }
-
-  function newDoc(fromTemplate) {
-    currentId = null;
-    currentIsTemplate = false;
-    titleInput.value = fromTemplate ? fromTemplate.title.replace(/template/i, '').trim() : '';
-    editor.value = fromTemplate ? fromTemplate.body : '';
-    updatePreview();
-    hideCanvas('#docs-canvas');
-    hideCanvas('#templates-canvas');
-    setPane('edit');
-    if (!isPhone()) editor.focus(); // don't pop the keyboard on phones
-  }
-
-  function hideCanvas(sel) {
-    const el = $(sel);
-    if (el) bootstrap.Offcanvas.getInstance(el)?.hide();
-  }
-
-  async function saveDoc() {
-    const body = editor.value;
-    if (!body.trim() && !titleInput.value.trim()) {
-      toast('Nothing to save yet', 'warning');
+  // ---------------------------------------------------------------- kebab
+  $('#btn-toggle-template').addEventListener('click', () => {
+    flushSave();
+    if (!currentId) {
+      toast('Type something first', 'warning');
       return;
     }
-    let doc;
-    if (currentId) {
-      doc = Store.get(currentId);
-      doc.title = titleInput.value.trim() || 'Untitled';
-      doc.body = body;
-    } else {
-      doc = {
-        id: null,
-        title: titleInput.value.trim() || 'Untitled',
-        body,
-        template: currentIsTemplate
-      };
-    }
-    const saved = Store.put(doc);
-    currentId = saved.id;
-    localStorage.removeItem('redditmd.draft');
-    toast(currentIsTemplate ? 'Template saved' : 'Saved', 'success');
-    renderLists();
-  }
-
-  function openDoc(id) {
-    const doc = Store.get(id);
-    if (!doc) return;
-    currentId = doc.id;
+    const doc = Store.get(currentId);
+    doc.template = !doc.template;
+    Store.put(doc);
     currentIsTemplate = !!doc.template;
-    titleInput.value = doc.title;
-    editor.value = doc.body;
-    updatePreview();
-    hideCanvas('#docs-canvas');
-    hideCanvas('#templates-canvas');
-    setPane('edit');
-    if (!isPhone()) editor.focus();
-  }
+    $('#badge-template').classList.toggle('d-none', !doc.template);
+    $('#btn-toggle-template').textContent = doc.template ? 'Convert back to note' : 'Save as template';
+    toast(doc.template ? 'Saved as template' : 'Converted back to note', 'success');
+  });
 
-  function deleteDoc(id) {
-    const doc = Store.get(id);
-    if (!doc) return;
-    if (!confirmDelete()) return;
-    Store.remove(id);
-    if (currentId === id) { currentId = null; currentIsTemplate = false; }
-    renderLists();
-    toast('Deleted', 'secondary');
+  // ---------------------------------------------------------------- home
+  const homeTabs = { notes: $('#tab-notes'), templates: $('#tab-templates') };
+  function setHomeTab(which) {
+    homeTabs.notes.classList.toggle('active', which === 'notes');
+    homeTabs.notes.setAttribute('aria-selected', String(which === 'notes'));
+    homeTabs.templates.classList.toggle('active', which === 'templates');
+    homeTabs.templates.setAttribute('aria-selected', String(which === 'templates'));
+    $('#home-panel-notes').classList.toggle('d-none', which !== 'notes');
+    $('#home-panel-templates').classList.toggle('d-none', which !== 'templates');
   }
+  homeTabs.notes.addEventListener('click', () => setHomeTab('notes'));
+  homeTabs.templates.addEventListener('click', () => setHomeTab('templates'));
 
-  function fmtTime(ts) {
-    const d = new Date(ts);
-    const today = new Date();
-    const sameDay = d.toDateString() === today.toDateString();
-    return sameDay
-      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: '2-digit' });
+  // Two-tap delete (window.confirm is unreliable in iOS standalone PWAs).
+  function bindDelete(btn, fn) {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.armed === '1') {
+        fn();
+        return;
+      }
+      btn.dataset.armed = '1';
+      const original = btn.innerHTML;
+      btn.innerHTML = 'Sure?';
+      btn.classList.remove('btn-outline-danger');
+      btn.classList.add('btn-danger');
+      setTimeout(() => {
+        btn.dataset.armed = '';
+        btn.innerHTML = original;
+        btn.classList.add('btn-outline-danger');
+        btn.classList.remove('btn-danger');
+      }, 2500);
+    });
   }
 
   function renderDocList() {
@@ -353,43 +356,34 @@
       .sort((a, b) => b.updated - a.updated);
     listEl.innerHTML = '';
     if (!docs.length) {
-      listEl.innerHTML = '<p class="text-muted small">No documents yet. Write something and hit 💾 Save.</p>';
+      listEl.innerHTML = '<p class="text-muted small mb-0">No notes yet. Tap <strong>✎ New note</strong> to start one.</p>';
       return;
     }
     for (const d of docs) {
       const item = document.createElement('div');
-      item.className = 'list-group-item d-flex justify-content-between align-items-center gap-2 doc-row' +
-        (d.id === currentId ? ' active' : '');
+      item.className = 'list-group-item d-flex justify-content-between align-items-center gap-2 doc-row';
       item.innerHTML =
         '<div class="overflow-hidden flex-grow-1" data-open style="cursor:pointer;min-width:0">' +
           '<div class="fw-semibold text-truncate">' + escapeHtml(d.title) + '</div>' +
-          '<div class="small text-muted text-truncate">' + escapeHtml(d.body.split('\n')[0] || '') + '</div>' +
-          '<div class="x-small text-muted">' + fmtTime(d.updated) + '</div>' +
+          '<div class="small text-muted text-truncate">' + escapeHtml(snippet(d.body)) + '</div>' +
+          '<div class="small text-secondary-emphasis">' + fmtDate(d.updated) + '</div>' +
         '</div>' +
-        '<div class="btn-group btn-group-sm flex-shrink-0">' +
-          '<button class="btn btn-outline-secondary" data-act="copy" title="Copy markdown">📋</button>' +
-          '<button class="btn btn-outline-danger" data-act="del" title="Delete">🗑</button>' +
+        '<div class="d-flex flex-column flex-sm-row gap-1 flex-shrink-0">' +
+          '<button class="btn btn-outline-secondary btn-sm" data-copy title="Copy markdown">📋</button>' +
+          '<button class="btn btn-outline-danger btn-sm" data-del title="Delete">🗑</button>' +
         '</div>';
       item.querySelector('[data-open]').addEventListener('click', () => openDoc(d.id));
-      item.querySelector('[data-act=copy]').addEventListener('click', async () => {
+      item.querySelector('[data-copy]').addEventListener('click', async () => {
         await copyText(RedditMD.normalize(d.body), d.title);
       });
-      item.querySelector('[data-act=del]').addEventListener('click', () => deleteDoc(d.id));
+      bindDelete(item.querySelector('[data-del]'), () => {
+        Store.remove(d.id);
+        if (currentId === d.id) currentId = null;
+        renderDocList();
+        toast('Note deleted', 'secondary');
+      });
       listEl.appendChild(item);
     }
-  }
-
-  function renderTemplatePicker() {
-    const sel = $('#new-from-template');
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">— pick a template —</option>';
-    for (const t of Store.getTemplates().sort((a, b) => a.title.localeCompare(b.title))) {
-      const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = t.title;
-      sel.appendChild(opt);
-    }
-    sel.value = cur;
   }
 
   function renderTemplateList() {
@@ -397,80 +391,49 @@
     const templates = Store.getTemplates().sort((a, b) => a.title.localeCompare(b.title));
     listEl.innerHTML = '';
     if (!templates.length) {
-      listEl.innerHTML = '<p class="text-muted small">No templates yet. Create one with <strong>+ New</strong>, ' +
-        'or write something in the editor and use <strong>Save as template</strong> from the Docs panel.</p>';
+      listEl.innerHTML =
+        '<p class="text-muted small mb-0">No templates yet. Create one here, or open a note in the editor ' +
+        'and use <strong>⋮ → Save as template</strong>.</p>';
       return;
     }
     for (const t of templates) {
       const item = document.createElement('div');
       item.className = 'list-group-item d-flex justify-content-between align-items-center gap-2';
       item.innerHTML =
-        '<div style="cursor:pointer;min-width:0" class="overflow-hidden flex-grow-1" data-open>' +
+        '<div class="overflow-hidden flex-grow-1" data-edit style="cursor:pointer;min-width:0">' +
           '<div class="fw-semibold text-truncate">' + escapeHtml(t.title) + '</div>' +
-          '<div class="small text-muted text-truncate">' + escapeHtml((t.body.match(/^#.*$/m) || [t.body.split('\n')[0] || ''])[0]) + '</div>' +
+          '<div class="small text-muted text-truncate">' + escapeHtml(snippet(t.body)) + '</div>' +
         '</div>' +
-        '<div class="btn-group btn-group-sm flex-shrink-0">' +
-          '<button class="btn btn-outline-primary" data-act="use" title="Create document from template">Use</button>' +
-          '<button class="btn btn-outline-secondary" data-act="edit" title="Edit template">✎</button>' +
-          '<button class="btn btn-outline-danger" data-act="del" title="Delete">🗑</button>' +
+        '<div class="d-flex flex-sm-row gap-1 flex-shrink-0">' +
+          '<button class="btn btn-primary btn-sm" data-use title="Create note from template">Use</button>' +
+          '<button class="btn btn-outline-danger btn-sm" data-del title="Delete">🗑</button>' +
         '</div>';
-      item.querySelector('div').addEventListener('click', () => { newDoc(t); });
-      item.querySelector('[data-act=use]').addEventListener('click', () => newDoc(t));
-      item.querySelector('[data-act=edit]').addEventListener('click', () => openDoc(t.id));
-      item.querySelector('[data-act=del]').addEventListener('click', () => deleteDoc(t.id));
+      item.querySelector('[data-edit]').addEventListener('click', () => openDoc(t.id));
+      item.querySelector('[data-use]').addEventListener('click', () => {
+        newDoc({ body: t.body, isTemplate: false });
+        toast('Started from template: ' + t.title, 'info');
+      });
+      bindDelete(item.querySelector('[data-del]'), () => {
+        Store.remove(t.id);
+        if (currentId === t.id) currentId = null;
+        renderTemplateList();
+        toast('Template deleted', 'secondary');
+      });
       listEl.appendChild(item);
     }
   }
 
   function renderLists() {
     renderDocList();
-    renderTemplatePicker();
     renderTemplateList();
   }
 
-  function escapeHtml(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  $('#btn-docs').addEventListener('click', () => {
-    renderDocList();
-    bootstrap.Offcanvas.getOrCreateInstance($('#docs-canvas')).show();
-  });
-  $('#btn-templates').addEventListener('click', () => {
-    renderTemplateList();
-    bootstrap.Offcanvas.getOrCreateInstance($('#templates-canvas')).show();
-  });
-  $('#doc-search').addEventListener('input', renderDocList);
   $('#btn-new-doc').addEventListener('click', () => newDoc());
-  $('#new-from-template').addEventListener('change', (e) => {
-    const t = Store.get(e.target.value);
-    if (t) { newDoc(t); toast('Started from template: ' + t.title, 'info'); }
-    e.target.value = '';
-  });
-
-  async function createTemplateFlow() {
-    const name = await promptModal('New template', 'Template name', '');
-    if (!name) return;
-    const saved = Store.put({ id: null, title: name, body: '# ' + name + '\n\n\n', template: true });
-    openDoc(saved.id);
-    toast('Template created', 'success');
-  }
-  $('#btn-new-template').addEventListener('click', createTemplateFlow);
-
-  $('#btn-save').addEventListener('click', saveDoc);
-  titleInput.addEventListener('input', () => { if (!currentId) saveDraft(); });
+  $('#btn-new-template').addEventListener('click', () => newDoc({ isTemplate: true }));
+  $('#doc-search').addEventListener('input', renderDocList);
 
   // ---------------------------------------------------------------- init
-  loadDraft();
-  updatePreview();
-  renderLists();
-
-  // Persist any unsaved draft when the app goes to the background / closes.
-  window.addEventListener('pagehide', saveDraft);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') saveDraft();
-  });
+  showHome();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

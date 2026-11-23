@@ -19,7 +19,16 @@ To **install as an app**: open the page in Chrome/Edge (desktop: install icon in
 
 ## Features
 
-- **Split view**: editor on the left, live Reddit-style preview on the right (toggleable to raw markdown).
+- **Two screens, no clutter**:
+  - **Home** — all notes in one list with search, plus a **Templates** tab. Create (`✎ New note`), copy, or two-tap-delete from each row.
+  - **Editor** — back button, live title, Copy, and a small ⋮ menu (copy Unicode / save as template). Nothing else.
+- **Autosave**: every edit is saved ~500ms after typing stops. There is no Save button. A note's **title is its first line** (markdown stripped); if the note never gets one it falls back to `Note — <date>`. Empty notes are never persisted.
+- **Inline toolbar** (edit pane): **B** *I* <u>U</u> ~~S~~ `code` link ^sup — inline formatting only.
+- **FAB (+)** in the lower right opens an insert sheet: tables, bulleted/ordered lists, quote, spoiler, divider, headings H1–H4.
+- **Split view**: on desktop the editor and live preview sit side by side; on phones a tab strip switches between them (preview toggleable to raw markdown).
+- **Save as template**: open a note, `⋮ → Save as template`; it appears on the Home Templates tab with a **Use** button to start a new note from it.
+
+### Markdown / Reddit flavor
 - **Reddit flavor support**:
   - Headings `#`–`######` (Reddit caps at `h6`)
   - **Bold** (`**text**` / `__text__`), *italic* (`*text*` / `_text_`)
@@ -33,9 +42,9 @@ To **install as an app**: open the page in Chrome/Edge (desktop: install icon in
 - **Copy buttons**:
   - **Copy** (top bar): copies the exact markdown — this is what you paste into Reddit's markdown editor.
   - **Copy unicode** (in raw mode): renders the markdown to plain text with Unicode formatting (mathematical bold, box-drawing tables). Useful for apps that strip markdown but display Unicode.
-- **Save & manage documents**: saved in browser storage (`localStorage`) as JSON records with title, body, created/updated timestamps — not raw markdown files, so metadata travels with the document. Autosaves an unsaved draft as you type. Search by title or content, copy or delete from the list.
-- **Templates**: mark documents as templates, then start a new document from the Docs panel's "Create from template" picker and just fill it in. Manage templates from the Templates panel.
-- **Editor niceties**: toolbar for all formatting, keyboard shortcuts (`Ctrl+B` bold, `Ctrl+I` italic, `Ctrl+K` link, `Ctrl+S` save), tab inserts spaces, soft-wrap toggle.
+- **Storage**: browser `localStorage` as JSON records (id, title, body, template flag, timestamps) — not raw markdown files. Per-browser, works offline, cleared only if you clear site data.
+- **Editor niceties**: keyboard shortcuts (`Ctrl+B` bold, `Ctrl+I` italic, `Ctrl+K` link), tab inserts spaces.
+- Dark theme top bar, light content; toasts for feedback; delete is a two-tap confirm (no native dialogs, which iOS standalone PWAs suppress).
 
 ## What's deliberately not supported
 
