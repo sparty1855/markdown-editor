@@ -1,4 +1,4 @@
-const VERSION = '13';
+const VERSION = '14';
 const CACHE = 'redditmd-v' + VERSION;
 
 // App code is version-pinned with ?v=N in index.html so CDN edges and the

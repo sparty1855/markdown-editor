@@ -83,8 +83,11 @@ const TableBuilder = (() => {
   function buildScreen() {
     screen = document.createElement('div');
     screen.id = 'screen-builder';
+    // z-index 1045: above the app UI (FAB ~1030), but BELOW Bootstrap's modal
+    // layer (backdrop 1050 / modal 1055) so the cell editor modal stacks on
+    // top of the builder where it belongs.
     screen.style.cssText =
-      'position:fixed;inset:0;z-index:1900;background:#fff;display:flex;flex-direction:column;' +
+      'position:fixed;inset:0;z-index:1045;background:#fff;display:flex;flex-direction:column;' +
       'padding-top:env(safe-area-inset-top,0);';
     screen.innerHTML = `
       <nav class="navbar bg-dark py-1 flex-shrink-0">
